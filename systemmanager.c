@@ -27,9 +27,15 @@ typedef struct{
 	int nivel[2];
 } estrutura;
 
+void taskmanager(int num, edgeServer* servers);
+void monitor();
+void maintenance();
+void edgeserver(edgeServer server);
+
 const char* filename = "config.txt";
 int shmid;
 estrutura * shared_struct;
+pid_t id;
 
 int main(int argc, char* argv[]){
     int queuePos, maxWait, num;
@@ -57,5 +63,28 @@ int main(int argc, char* argv[]){
 		perror("Shmat error");
 		exit(1);
 	}
+
+    for(i=0; i<3; i++){
+        if((id = fork())==0){
+            if(i==0)
+                taskmanager(num, servers);
+            if(i==1)
+                monitor();
+            if(i==2)
+                maintenance();
+        }
+    }
     return 0;
+}
+
+void taskmanager(int num, edgeServer* servers){
+    int i;
+    for(i = 0;i < num; i++){
+        if((id=fork())==0)
+            edgeserver(servers[i]);
+    }
+}
+
+void edgeserver(edgeServer server) {
+
 }
