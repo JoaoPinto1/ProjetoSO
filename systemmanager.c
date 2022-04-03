@@ -64,16 +64,20 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 
-    for(i=0; i<3; i++){
-        if((id = fork())==0){
-            if(i==0)
-                taskmanager(num, servers);
-            if(i==1)
-                monitor();
-            if(i==2)
-                maintenance();
+    int id1 = fork();
+    int id2 = fork();
+    if(id1==0){
+        if(id2 == 0) {
+            taskmanager(num, servers);
+        } else {
+            monitor();
+        }
+    } else{
+        if(id2 == 0){
+            maintenance();
         }
     }
+
     return 0;
 }
 
