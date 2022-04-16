@@ -15,7 +15,6 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <fcntl.h>
 #include "log.h"
 #define SHM_NAME "SHM"
 
@@ -75,7 +74,7 @@ int main(int argc, char* argv[]){
 	
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 	
-	conf = (configs *) mmap(0, sizeof(configs), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
+    conf = (configs *) mmap(0, sizeof(configs), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
 
     conf->maxWait = maxWait;
     conf->queuePos = queuePos;
@@ -92,9 +91,11 @@ int main(int argc, char* argv[]){
        
     offset += num * sizeof(edgeServer);
        
-	log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
-
-    //pthread_mutex_init(log_mutex, PTHREAD_PROCESS_SHARED);
+    log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
+    pthread_mutexattr_t *attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(log_mutex, &aatr);
     
     sync_log("SHARED MEMORY CREATED");
        
