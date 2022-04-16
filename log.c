@@ -13,4 +13,6 @@ void logfunc(char *s) {
     FILE *f = fopen(LOGFILE, "a");
     printf("%s - %s\n", curr, s);
     fprintf(f, "%s - %s\n", curr, s);
+    
+    fclose(f);
 }
