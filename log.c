@@ -2,7 +2,7 @@
 
 void getcurrtime(char *curr) {
     time_t t = time(NULL);
-    struct tm info = localtime(&t);
+    struct tm *info = localtime(&t);
     strftime(curr, TIMELEN, "%H:%M:%S", &info);
 }
 
