@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include "log.h"
 
 typedef struct{
     char nome[32];
@@ -40,16 +41,19 @@ pid_t id;
 int main(int argc, char* argv[]){
     int queuePos, maxWait, num;
     FILE * f = fopen(filename, "r");
+	
     if (!f) {
         exit(EXIT_FAILURE);
     }
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
+	
     if(num<2){
-        printf("Edge server insuficientes");
+        logfunc("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
     int i;
     edgeServer servers[num];
+	
     for(i=0; i < num; i++){
         fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu1, &servers[i].vcpu2);
     }
@@ -59,20 +63,25 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 	
-	if((shared_struct = (estrutura*) shmat(shmid,NULL,0))==(estrutura*)-1){
-		perror("Shmat error");
-		exit(1);
-	}
-
+    if((shared_struct = (estrutura*) shmat(shmid,NULL,0))==(estrutura*)-1){
+	perror("Shmat error");
+	exit(1);
+    }
+	
+    logfunc("SHARED MEMORY CREATED");
     int id1 = fork();
     int id2 = fork();
+	
     if(id1==0){
+	    
         if(id2 == 0) {
             taskmanager(num, servers);
+		
         } else {
             monitor();
         }
-    } else{
+    } else {
+	    
         if(id2 == 0){
             maintenance();
         }
@@ -83,12 +92,18 @@ int main(int argc, char* argv[]){
 
 void taskmanager(int num, edgeServer* servers){
     int i;
+	
     for(i = 0;i < num; i++){
-        if((id=fork())==0)
+        if((id=fork())==0) {
+	    char s[15];
+	    sprintf(s, "SERVER_%d READY", i+1);
+	    logfunc(s);
+	    
             edgeserver(servers[i]);
+	}
     }
 }
 
 void edgeserver(edgeServer server) {
-
+	
 }
