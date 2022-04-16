@@ -17,18 +17,22 @@
 #include "log.h"
 #DEFINE SHM_NAME "SHM"
 
+typedef struct{
+	int queuePos;
+	int maxWait;
+	int num_servers;
+} configs;
+
+typedef struct{
+	int speed;
+	float wait_time;
+	int nivel;
+} vcpu;
 
 typedef struct{
     char nome[32];
-    int vcpu1;
-    int vcpu2;
+    vcpu vcpus[2];
 } edgeServer;
-
-typedef struct{
-	int capacidade[2];
-	float time[2];
-	int nivel[2];
-} estrutura;
 
 void taskmanager(int num, edgeServer* servers);
 void monitor();
@@ -36,7 +40,7 @@ void maintenance();
 void edgeserver(edgeServer server);
 void sync_log(char *s);
 
-estrutura *shared_struct;
+configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
 
@@ -51,6 +55,8 @@ int main(int argc, char* argv[]){
     if (!f) {
         exit(EXIT_FAILURE);
     }
+
+    sync_log("OFFLOAD SIMULATOR STARTING");
 	
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
     if(num<2){
@@ -65,27 +71,33 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 	
-    ftruncate(shmid, sizeof(estrutura) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
+    ftruncate(shmid, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 	
-    if((shared_struct = (estrutura *) mmap(0, sizeof(estrutura), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset) < 0){
+    if((conf = (configs *) mmap(0, sizeof(estrutura), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset) < 0){
 	perror("mmap error - shared_struct");
 	exit(1);
     }
+    
+    conf->maxWait = maxWait;
+    conf->queuePos = queuePos;
+    conf->num_servers = num;
        
     offset += sizeof(estrutura);
+       
     if((servers = (edgeServer *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset) < 0){
 	perror("mmap error - servers");
 	exit(1);
     }
        
+    for(i=0; i < num; i++){
+        fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu[0].speed, &servers[i].vcpu[1].speed);
+    }
+       
     offset += num * sizeof(edgeServer);
+       
     if((log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset) < 0){
 	perror("mmap error - log_mutex");
 	exit(1);
-    }
-       
-    for(i=0; i < num; i++){
-        fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu1, &servers[i].vcpu2);
     }
 	
     pthread_mutex_init(log_mutex, PTHREAD_PROCESS_SHARED);
@@ -112,13 +124,18 @@ int main(int argc, char* argv[]){
 
     return 0;
 }
-
+       
+void maintenance() {
+	printf("%d %d %d\n", conf->queuePos, conf->maxWait, conf->num_servers);
+	for (int i = 0; i < conf->num_servers; i++) {
+		printf("%s %d %d\n", servers[i].name, servers[i].vcpus[0].speed, servers[i].vcpus[1].speed);
+	}
+	
 void taskmanager(int num, edgeServer* servers){
     int i;
 	
     for(i = 0;i < num; i++){
         if((id=fork())==0) {
-	    
             edgeserver(servers[i]);
 	}
     }
