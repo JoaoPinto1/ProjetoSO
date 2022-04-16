@@ -33,6 +33,8 @@ void monitor();
 void maintenance();
 void edgeserver(edgeServer server);
 
+
+
 const char* filename = "config.txt";
 int shmid;
 estrutura * shared_struct;
@@ -45,12 +47,13 @@ int main(int argc, char* argv[]){
     if (!f) {
         exit(EXIT_FAILURE);
     }
-    fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
 	
+    fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
     if(num<2){
         logfunc("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
+	
     int i;
     edgeServer servers[num];
 	
@@ -95,9 +98,6 @@ void taskmanager(int num, edgeServer* servers){
 	
     for(i = 0;i < num; i++){
         if((id=fork())==0) {
-	    char s[15];
-	    sprintf(s, "SERVER_%d READY", i+1);
-	    logfunc(s);
 	    
             edgeserver(servers[i]);
 	}
@@ -105,5 +105,7 @@ void taskmanager(int num, edgeServer* servers){
 }
 
 void edgeserver(edgeServer server) {
-	
+    char s[15];
+    sprintf(s, "SERVER_%d READY", i+1);
+    logfunc(s);
 }
