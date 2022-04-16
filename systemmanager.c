@@ -14,8 +14,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include "log.h"
-#DEFINE SHM_NAME "SHM"
+#define SHM_NAME "SHM"
 
 typedef struct{
 	int queuePos;
@@ -30,7 +32,7 @@ typedef struct{
 } vcpu;
 
 typedef struct{
-    char nome[32];
+    char name[32];
     vcpu vcpus[2];
 } edgeServer;
 
@@ -71,36 +73,29 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 	
-    ftruncate(shmid, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
+    ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 	
-    if((conf = (configs *) mmap(0, sizeof(estrutura), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset) < 0){
-	perror("mmap error - shared_struct");
-	exit(1);
-    }
-    
+	conf = (configs *) mmap(0, sizeof(configs), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
+
     conf->maxWait = maxWait;
     conf->queuePos = queuePos;
     conf->num_servers = num;
        
-    offset += sizeof(estrutura);
+    offset += sizeof(configs);
        
-    if((servers = (edgeServer *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset) < 0){
-	perror("mmap error - servers");
-	exit(1);
-    }
+    servers = (edgeServer *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
+
        
     for(i=0; i < num; i++){
-        fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu[0].speed, &servers[i].vcpu[1].speed);
+        fscanf(f,"%[^,],%d,%d ", servers[i].name, &servers[i].vcpus[0].speed, &servers[i].vcpus[1].speed);
     }
        
     offset += num * sizeof(edgeServer);
        
-    if((log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset) < 0){
-	perror("mmap error - log_mutex");
-	exit(1);
-    }
-	
-    pthread_mutex_init(log_mutex, PTHREAD_PROCESS_SHARED);
+	log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
+
+    //pthread_mutex_init(log_mutex, PTHREAD_PROCESS_SHARED);
+    
     sync_log("SHARED MEMORY CREATED");
        
     int id1 = fork();
@@ -130,6 +125,7 @@ void maintenance() {
 	for (int i = 0; i < conf->num_servers; i++) {
 		printf("%s %d %d\n", servers[i].name, servers[i].vcpus[0].speed, servers[i].vcpus[1].speed);
 	}
+}
 	
 void taskmanager(int num, edgeServer* servers){
     int i;
@@ -137,7 +133,7 @@ void taskmanager(int num, edgeServer* servers){
     for(i = 0;i < num; i++){
         if((id=fork())==0) {
             edgeserver(servers[i]);
-	}
+	    }
     }
 }
 
