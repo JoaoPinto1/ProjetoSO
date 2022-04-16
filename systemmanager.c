@@ -15,7 +15,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include "log.h"
-
+#DEFINE SHM_NAME "SHM"
 typedef struct{
     char nome[32];
     int vcpu1;
@@ -36,8 +36,9 @@ void edgeserver(edgeServer server);
 
 
 const char* filename = "config.txt";
-int shmid;
+int shm_fd;
 estrutura * shared_struct;
+edgeServer *servers;
 pid_t id;
 
 int main(int argc, char* argv[]){
@@ -55,22 +56,28 @@ int main(int argc, char* argv[]){
     }
 	
     int i;
-    edgeServer servers[num];
 	
-    for(i=0; i < num; i++){
-        fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu1, &servers[i].vcpu2);
-    }
-
-    if((shmid = shmget(IPC_PRIVATE,sizeof(estrutura),IPC_CREAT | 0766))<0){
-        perror("Error in shmget");
+    if((shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666))<0){
+        perror("Error in shm_open");
         exit(1);
     }
 	
-    if((shared_struct = (estrutura*) shmat(shmid,NULL,0))==(estrutura*)-1){
-	perror("Shmat error");
+    ftruncate(shmid, sizeof(estrutura) + sizeof(edgeServer) * num);
+	
+    if((shared_struct = (estrutura *) mmap(0, sizeof(estrutura), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0) < 0){
+	perror("mmap error - shared_struct");
 	exit(1);
     }
+       
+    if((servers = (edgeServer *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, sizeof(estrutura)) < 0){
+	perror("mmap error - servers");
+	exit(1);
+    }
+    for(i=0; i < num; i++){
+        fscanf(f,"%[^,],%d,%d ", servers[i].nome, &servers[i].vcpu1, &servers[i].vcpu2);
+    }
 	
+    
     logfunc("SHARED MEMORY CREATED");
     int id1 = fork();
     int id2 = fork();
@@ -83,6 +90,7 @@ int main(int argc, char* argv[]){
         } else {
             monitor();
         }
+	    
     } else {
 	    
         if(id2 == 0){
