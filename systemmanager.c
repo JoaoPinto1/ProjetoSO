@@ -122,7 +122,7 @@ int main(){
 }
 
 void maintenance() {
-
+    logfunc("PROCESS MAINTENANCE MANAGER CREATED");
 }
 
 void taskmanager(){
@@ -172,7 +172,7 @@ void *workercpu(){
 }
 
 void monitor() {
-
+    logfunc("PROCESS MONITOR CREATED");
 }
 
 void *scheduler(){
