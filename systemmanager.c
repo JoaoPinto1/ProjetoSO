@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include "log.h"
+#include "task.h"
 
 typedef struct{
     int queuePos;
@@ -41,6 +42,7 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
+task *taskQueue;
 
 const char* filename = "config.txt";
 int shm_fd;
@@ -73,6 +75,8 @@ int main(){
     conf->num_servers = num;
     offset += sizeof(configs);
 
+    taskQueue = (task *) malloc(sizeof(task) * queuePos);
+	
     servers = (edgeServer *) (shm_pointer + offset);
 	
     for (i = 0; i < num; i++){
