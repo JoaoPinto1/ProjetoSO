@@ -99,7 +99,7 @@ int main(){
     if (id1 == 0){
 
         if (id2 == 0) {
-            taskmanager(num, servers);
+            taskmanager();
 
         } else {
             monitor();
@@ -133,6 +133,16 @@ void taskmanager(){
             exit(0);
         }
     }
+    pthread_t threads[2];
+    int id[2];
+    for(int i=0, i<2; i++){
+        id[i] = i;
+        pthread_create(&threads[i], NULL, workercpu, &id[i]);
+    }
+	
+    for(int i=0;i<2;i++){
+        pthread_join(threads[i], NULL);
+    }
 }
 
 void edgeserver(edgeServer server, int num) {
@@ -160,6 +170,18 @@ void *workercpu(){
 
 void monitor() {
 
+}
+
+void *scheduler(){
+
+    pthread_exit(NULL);
+    return NULL;
+}
+
+void *dispatcher(){
+
+    pthread_exit(NULL);
+    return NULL;
 }
 void sync_log(char *s) {
     pthread_mutex_lock(log_mutex);
