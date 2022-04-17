@@ -116,11 +116,11 @@ void maintenance() {
 
 }
 
-void taskmanager(edgeServer* servers){
+void taskmanager(){
     logfunc("PROCESS TASK MANAGER CREATED");
     int i;
 
-    for(i = 0;i < num; i++){
+    for(i = 0;i < conf->num_servers; i++){
         if((id=fork())==0) {
             edgeserver(servers[i], i);
             exit(0);
