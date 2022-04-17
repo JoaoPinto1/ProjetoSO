@@ -31,7 +31,7 @@ typedef struct{
     vcpu vcpus[2];
 } edgeServer;
 
-void taskmanager(int num, edgeServer* servers);
+void taskmanager();
 void monitor();
 void maintenance();
 void edgeserver(edgeServer server, int num);
@@ -132,6 +132,21 @@ void edgeserver(edgeServer server, int num) {
     char string[50];
     snprintf(string,20,"SERVER_%d READY",num);
     logfunc(string);
+	pthread_t threads[2];
+    int id[2];
+    for(int i=0, i<2; i++){
+        id[i] = i;
+        pthread_create(&threads[i],NULL, workercpu, &id[i]);
+    }
+    for(int i=0;i<2;i++){
+        pthread_join(threads[i],NULL);
+    }
+}
+
+void *workercpu(){
+
+    pthread_exit(NULL);
+    return NULL;
 }
 
 void monitor() {
