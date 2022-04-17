@@ -117,7 +117,9 @@ int main(int argc, char* argv[]){
             maintenance();
         }
     }
-
+    
+	
+    shm_unlink(SHM_NAME);
     return 0;
 }
        
