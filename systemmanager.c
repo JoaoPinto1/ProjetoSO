@@ -32,6 +32,11 @@ typedef struct{
     vcpu vcpus[2];
 } edgeServer;
 
+typedef struct{
+    task t;
+    float priority;
+} queuedTask;
+
 void taskmanager();
 void monitor();
 void maintenance();
@@ -122,7 +127,7 @@ void maintenance() {
 
 void taskmanager(){
     logfunc("PROCESS TASK MANAGER CREATED");
-    task *taskQueue = (task *) malloc(sizeof(task) * conf->queuePos);;
+    queuedTask *taskQueue = (task *) malloc(sizeof(queuedTask) * conf->queuePos);;
     int i;
 
     for (i = 0; i < conf->num_servers; i++){
