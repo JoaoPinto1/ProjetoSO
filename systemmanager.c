@@ -34,7 +34,7 @@ typedef struct{
 void taskmanager(int num, edgeServer* servers);
 void monitor();
 void maintenance();
-void edgeserver(edgeServer server);
+void edgeserver(edgeServer server, int num);
 void sync_log(char *s);
 
 void *shm_pointer;
@@ -59,7 +59,6 @@ int main(){
         exit(EXIT_FAILURE);
     }
     shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666);
-
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 
     shm_pointer = mmap(0, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
@@ -79,7 +78,6 @@ int main(){
 	
 	fclose(f);
     offset += num * sizeof(edgeServer);
-
     log_mutex = (pthread_mutex_t *) (shm_pointer + offset);
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -107,7 +105,9 @@ int main(){
         }
     }
 
-
+    for(i=0;i<3;i++){
+        wait(NULL);
+    }
     shm_unlink(SHM_NAME);
     return 0;
 }
@@ -117,17 +117,21 @@ void maintenance() {
 }
 
 void taskmanager(int num, edgeServer* servers){
+    logfunc("PROCESS TASK MANAGER CREATED");
     int i;
 
     for(i = 0;i < num; i++){
         if((id=fork())==0) {
-            edgeserver(servers[i]);
+            edgeserver(servers[i], i);
+            exit(0);
         }
     }
 }
 
-void edgeserver(edgeServer server) {
-
+void edgeserver(edgeServer server, int num) {
+    char string[50];
+    snprintf(string,20,"SERVER_%d READY",num);
+    logfunc(string);
 }
 
 void monitor() {
