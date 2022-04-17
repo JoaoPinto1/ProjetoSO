@@ -42,6 +42,9 @@ void monitor();
 void maintenance();
 void edgeserver(edgeServer server, int num);
 void sync_log(char *s);
+void *dispatcher();
+void *scheduler();
+void *workercpu();
 
 void *shm_pointer;
 configs *conf;
@@ -127,7 +130,7 @@ void maintenance() {
 
 void taskmanager(){
     logfunc("PROCESS TASK MANAGER CREATED");
-    queuedTask *taskQueue = (task *) malloc(sizeof(queuedTask) * conf->queuePos);;
+    queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);;
     int i;
 
     for (i = 0; i < conf->num_servers; i++){
@@ -156,7 +159,7 @@ void edgeserver(edgeServer server, int num) {
     pthread_t threads[2];
     int id[2];
 	
-    for (int i=0, i<2; i++){
+    for (int i=0; i<2; i++){
         id[i] = i;
         pthread_create(&threads[i],NULL, workercpu, &id[i]);
     }
