@@ -49,15 +49,18 @@ pid_t id;
 int main(){
     int queuePos, maxWait, num, offset = 0, i;
     logfunc("OFFLOAD SIMULATOR STARTING");
-	FILE * f = fopen(filename, "r");
+	
+    FILE * f = fopen(filename, "r");
     if (!f) {
         exit(EXIT_FAILURE);
     }
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
-    if(num<2){
+	
+    if (num<2){
         sync_log("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
+	
     shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 
@@ -72,11 +75,11 @@ int main(){
 
     servers = (edgeServer *) (shm_pointer + offset);
 	
-    for(i=0; i < num; i++){
+    for (i = 0; i < num; i++){
         fscanf(f,"%[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
     }
 	
-	fclose(f);
+    fclose(f);
     offset += num * sizeof(edgeServer);
     log_mutex = (pthread_mutex_t *) (shm_pointer + offset);
     pthread_mutexattr_t attr;
@@ -89,9 +92,9 @@ int main(){
     int id1 = fork();
     int id2 = fork();
 
-    if(id1==0){
+    if (id1 == 0){
 
-        if(id2 == 0) {
+        if (id2 == 0) {
             taskmanager(num, servers);
 
         } else {
@@ -100,12 +103,12 @@ int main(){
 
     } else {
 
-        if(id2 == 0){
+        if (id2 == 0){
             maintenance();
         }
     }
 
-    for(i=0;i<3;i++){
+    for (i=0; i < 3; i++){
         wait(NULL);
     }
     shm_unlink(SHM_NAME);
@@ -120,8 +123,8 @@ void taskmanager(){
     logfunc("PROCESS TASK MANAGER CREATED");
     int i;
 
-    for(i = 0;i < conf->num_servers; i++){
-        if((id=fork())==0) {
+    for (i = 0; i < conf->num_servers; i++){
+        if ((id = fork()) == 0) {
             edgeserver(servers[i], i);
             exit(0);
         }
@@ -132,19 +135,21 @@ void edgeserver(edgeServer server, int num) {
     char string[50];
     snprintf(string,20,"SERVER_%d READY",num);
     logfunc(string);
-	pthread_t threads[2];
+	
+    pthread_t threads[2];
     int id[2];
-    for(int i=0, i<2; i++){
+	
+    for (int i=0, i<2; i++){
         id[i] = i;
         pthread_create(&threads[i],NULL, workercpu, &id[i]);
     }
-    for(int i=0;i<2;i++){
+
+    for (int i=0; i<2; i++){
         pthread_join(threads[i],NULL);
     }
 }
 
 void *workercpu(){
-
     pthread_exit(NULL);
     return NULL;
 }
