@@ -116,7 +116,7 @@ void maintenance() {
 
 }
 
-void taskmanager(int num, edgeServer* servers){
+void taskmanager(edgeServer* servers){
     logfunc("PROCESS TASK MANAGER CREATED");
     int i;
 
