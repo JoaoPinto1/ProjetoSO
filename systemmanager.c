@@ -133,12 +133,12 @@ void taskmanager(){
     }
     pthread_t threads[2];
     int id[2];
-    for(int i=0, i<2; i++){
-        id[i] = i;
-        pthread_create(&threads[i], NULL, workercpu, &id[i]);
-    }
-	
-    for(int i=0;i<2;i++){
+    id[0] = 0;
+    pthread_create(&threads[0], NULL, scheduler, &id[0]);
+    id[1] = 1;
+    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+
+    for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
     }
 }
