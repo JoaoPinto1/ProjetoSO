@@ -37,6 +37,7 @@ void maintenance();
 void edgeserver(edgeServer server);
 void sync_log(char *s);
 
+void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
@@ -46,45 +47,40 @@ int shm_fd;
 pid_t id;
 
 int main(){
-    int queuePos, maxWait, num, offset = 0;
-    FILE * f = fopen(filename, "r");
-
+    int queuePos, maxWait, num, offset = 0, i;
+    logfunc("OFFLOAD SIMULATOR STARTING");
+	FILE * f = fopen(filename, "r");
     if (!f) {
         exit(EXIT_FAILURE);
     }
-    sync_log("OFFLOAD SIMULATOR STARTING");
-
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
     if(num<2){
         sync_log("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
-
-    int i;
-
     shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666);
 
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 
-    conf = (configs *) mmap(0, sizeof(configs), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
-
+    shm_pointer = mmap(0, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
+    
+    conf = (configs *) shm_pointer;
+    
     conf->maxWait = maxWait;
     conf->queuePos = queuePos;
     conf->num_servers = num;
-
     offset += sizeof(configs);
 
-    servers = (edgeServer *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
-
-
+    servers = (edgeServer *) (shm_pointer + offset);
+	
     for(i=0; i < num; i++){
-        fscanf(f,"%[^,],%d,%d ", servers[i].name, &servers[i].vcpus[0].speed, &servers[i].vcpus[1].speed);
+        fscanf(f,"%[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
     }
 	
 	fclose(f);
     offset += num * sizeof(edgeServer);
 
-    log_mutex = (pthread_mutex_t *) mmap(0, sizeof(edgeServer) * num, PROT_READ | PROT_WRITE,  MAP_SHARED, shm_fd, offset);
+    log_mutex = (pthread_mutex_t *) (shm_pointer + offset);
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
@@ -117,10 +113,7 @@ int main(){
 }
 
 void maintenance() {
-    printf("%d %d %d\n", conf->queuePos, conf->maxWait, conf->num_servers);
-    for (int i = 0; i < conf->num_servers; i++) {
-        printf("%s %d %d\n", servers[i].name, servers[i].vcpus[0].speed, servers[i].vcpus[1].speed);
-    }
+
 }
 
 void taskmanager(int num, edgeServer* servers){
