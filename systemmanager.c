@@ -42,7 +42,6 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
-task *taskQueue;
 
 const char* filename = "config.txt";
 int shm_fd;
@@ -74,8 +73,6 @@ int main(){
     conf->queuePos = queuePos;
     conf->num_servers = num;
     offset += sizeof(configs);
-
-    taskQueue = (task *) malloc(sizeof(task) * queuePos);
 	
     servers = (edgeServer *) (shm_pointer + offset);
 	
@@ -125,6 +122,7 @@ void maintenance() {
 
 void taskmanager(){
     logfunc("PROCESS TASK MANAGER CREATED");
+    task *taskQueue = (task *) malloc(sizeof(task) * conf->queuePos);;
     int i;
 
     for (i = 0; i < conf->num_servers; i++){
