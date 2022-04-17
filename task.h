@@ -1,6 +1,8 @@
-//
-// Created by atiag on 17/04/2022.
-//
+/*
+    task.h
+    Joao Pedro Ventura Pinto 2020220907
+    Tiago Oliveira Gomes 2020223013
+*/
 
 #ifndef EX_B_C_TASK_H
 #define EX_B_C_TASK_H
