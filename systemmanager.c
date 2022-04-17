@@ -40,7 +40,7 @@ typedef struct{
 void taskmanager();
 void monitor();
 void maintenance();
-void edgeserver(edgeServer server, int num);
+void edgeserver(edgeServer server);
 void sync_log(char *s);
 void *dispatcher();
 void *scheduler();
@@ -85,7 +85,7 @@ int main(){
     servers = (edgeServer *) (shm_pointer + offset);
 	
     for (i = 0; i < num; i++){
-        fscanf(f,"%[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
+        fscanf(f," %[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
     }
 	
     fclose(f);
@@ -125,17 +125,17 @@ int main(){
 }
 
 void maintenance() {
-    logfunc("PROCESS MAINTENANCE MANAGER CREATED");
+    sync_log("PROCESS MAINTENANCE MANAGER CREATED");
 }
 
 void taskmanager(){
-    logfunc("PROCESS TASK MANAGER CREATED");
-    queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);;
+    sync_log("PROCESS TASK MANAGER CREATED");
+    queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int i;
 
     for (i = 0; i < conf->num_servers; i++){
         if ((id = fork()) == 0) {
-            edgeserver(servers[i], i);
+            edgeserver(servers[i]);
             exit(0);
         }
     }
@@ -151,10 +151,10 @@ void taskmanager(){
     }
 }
 
-void edgeserver(edgeServer server, int num) {
+void edgeserver(edgeServer server) {
     char string[50];
-    snprintf(string,20,"SERVER_%d READY",num);
-    logfunc(string);
+    snprintf(string,40,"%s READY",server.name);
+    sync_log(string);
 	
     pthread_t threads[2];
     int id[2];
@@ -175,7 +175,7 @@ void *workercpu(){
 }
 
 void monitor() {
-    logfunc("PROCESS MONITOR CREATED");
+    sync_log("PROCESS MONITOR CREATED");
 }
 
 void *scheduler(){
