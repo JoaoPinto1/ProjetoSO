@@ -11,4 +11,11 @@ typedef struct {
     int mi;
     int timelimit;
 } task;
+
+
+typedef struct{
+    task t;
+    float priority;
+} queuedTask;
+
 #endif //TASK_H
