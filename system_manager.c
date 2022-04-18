@@ -103,32 +103,34 @@ int main(){
     pthread_mutex_init(log_mutex, &attr);
 
     sync_log("SHARED MEMORY CREATED");
-	
-    int id1 = fork();
-    int id2 = fork();
-
-    if (id1 == 0){
-
-        if (id2 == 0) {
-            taskmanager();
-	    exit(0);
-
-        } else {
-            monitor();
-	    exit(0);
-        }
-
-    } else {
-
-        if (id2 == 0){
-            maintenance();
-	    exit(0);
-        }
+    
+    for (i = 0; i < 3; i++) {
+    	if (fork()==0) {
+    		switch(i) {
+    		
+    		case 0:
+    			taskmanager();
+    			exit(0);
+    			break;
+    			
+    		case 1:
+    			maintenance();
+    			exit(0);
+    			break;
+    			
+    		default:
+    			monitor();
+    			exit(0);
+    			break;
+    			
+    		}
+    	}	
     }
 
     for (i=0; i < 3; i++){
         wait(NULL);
     }
+    
     shm_unlink(SHM_NAME);
     sync_log("SIMULATOR CLOSING");
     return 0;
@@ -149,14 +151,18 @@ void taskmanager(){
             exit(0);
         }
     }
+    
+    for (i=0; i < conf->num_servers; i++) {
+        wait(NULL);
+    }
     pthread_t threads[2];
     int id[2];
     id[0] = 0;
     pthread_create(&threads[0], NULL, scheduler, &id[0]);
     id[1] = 1;
     pthread_create(&threads[1], NULL, dispatcher, &id[1]);
-
-    for(int i=0; i<2; i++){
+	
+    for(i=0; i<2; i++){
         pthread_join(threads[i], NULL);
     }
 }
@@ -199,6 +205,7 @@ void *dispatcher(){
     pthread_exit(NULL);
     return NULL;
 }
+
 void sync_log(char *s) {
     pthread_mutex_lock(log_mutex);
     logfunc(s);
