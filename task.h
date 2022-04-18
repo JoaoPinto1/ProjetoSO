@@ -4,11 +4,11 @@
     Tiago Oliveira Gomes 2020223013
 */
 
-#ifndef EX_B_C_TASK_H
-#define EX_B_C_TASK_H
+#ifndef TASK_H
+#define TASK_H
 
 typedef struct {
     int mi;
     int timelimit;
 } task;
-#endif //EX_B_C_TASK_H
+#endif //TASK_H
