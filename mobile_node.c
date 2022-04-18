@@ -1,3 +1,9 @@
+/*
+    log.c
+    Joao Pedro Ventura Pinto 2020220907
+    Tiago Oliveira Gomes 2020223013
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
