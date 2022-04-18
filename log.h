@@ -8,7 +8,7 @@
 #define LOG_H
 
 #define LOGFILE "log.txt"
-#define TIMELEN 9
+#define TIMELEN 25
 #include <stdio.h>
 #include <time.h>
 
