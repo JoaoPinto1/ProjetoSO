@@ -137,7 +137,7 @@ void maintenance() {
 
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED");
-    queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
+    //queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int i;
 
     for (i = 0; i < conf->num_servers; i++){

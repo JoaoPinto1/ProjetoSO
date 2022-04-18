@@ -2,7 +2,7 @@ CC	= gcc
 OBJS	= system_manager.o log.o
 PROG	= offload_manager
 CFLAGS	= -Wall -pthread -lrt -g
-all:	$(PROG)
+all:	$(PROG) mobile_node
 
 clean:
 	rm $(OBJS) *~ $(PROG)
@@ -11,8 +11,8 @@ $(PROG):	$(OBJS)
 .c.o:
 	$(CC) $< $(CFLAGS) -c -o $@
 
-mobile_node.o:	mobile_node.c
-	gcc mobile_node.c -o mobile_node
+mobile_node:	mobile_node.c
+	$(CC) mobile_node.c $(CFLAGS) -o $@
 
 system_manager.o:	system_manager.c log.c log.h
 log.o:	log.c log.h

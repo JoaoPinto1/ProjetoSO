@@ -12,8 +12,8 @@ int main(int argc, char* argv[]){
         printf("Argumentos inválidos");
         return 1;
     }
-    long numpedidos = strtol(argv[1], NULL, 10);
-    long intervalo = strtol(argv[2],NULL, 10);
-    long instrucoes = strtol(argv[3],NULL,10);
-    long tempomax = strtol(argv[4], NULL, 10);
+    //long numpedidos = strtol(argv[1], NULL, 10);
+    //long intervalo = strtol(argv[2],NULL, 10);
+    //long instrucoes = strtol(argv[3],NULL,10);
+    //long tempomax = strtol(argv[4], NULL, 10);
 }
