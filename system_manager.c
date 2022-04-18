@@ -38,11 +38,6 @@ typedef struct{
     vcpu vcpus[2];
 } edgeServer;
 
-typedef struct{
-    task t;
-    float priority;
-} queuedTask;
-
 void taskmanager();
 void monitor();
 void maintenance();
