@@ -111,15 +111,18 @@ int main(){
 
         if (id2 == 0) {
             taskmanager();
+	    exit(0);
 
         } else {
             monitor();
+	    exit(0);
         }
 
     } else {
 
         if (id2 == 0){
             maintenance();
+	    exit(0);
         }
     }
 
