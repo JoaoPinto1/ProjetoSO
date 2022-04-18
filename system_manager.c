@@ -57,18 +57,26 @@ configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
 
-const char* filename = "config.txt";
 int shm_fd;
 pid_t id;
 
-int main(){
-    int queuePos, maxWait, num, offset = 0, i;
+int main(int argc, char *argv[]){
+    if (argc != 2) {
+	    logfunc("INCORRECT NUMBER OF ARGUMENTS");
+	    exit(-1);
+    }
+	
     logfunc("OFFLOAD SIMULATOR STARTING");
+
+    int queuePos, maxWait, num, offset = 0, i;
+    const char* filename = argv[1];
 	
     FILE * f = fopen(filename, "r");
     if (!f) {
+	logfunc("ERROR READING CONFIGURATION FILE");
         exit(EXIT_FAILURE);
     }
+	
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
 	
     if (num<2){
