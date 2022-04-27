@@ -52,6 +52,7 @@ configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
 
+const char* filename = "config.txt";
 int shm_fd;
 pid_t id;
 
@@ -65,20 +66,26 @@ int main(int argc, char *argv[]){
 
     int queuePos, maxWait, num, offset = 0, i;
     const char* filename = argv[1];
+
 	
     FILE * f = fopen(filename, "r");
     if (!f) {
-	logfunc("ERROR READING CONFIGURATION FILE");
         exit(EXIT_FAILURE);
     }
-	
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
 	
     if (num<2){
         sync_log("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
-	
+	// criaçao named pipe
+    if (mkfifo("TASK_PIPE", 0777) == -1){
+        if(errno != EEXIST) {
+            printf("Could not create named pipe\n");
+            return 1;
+        }
+    }
+
     shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 
@@ -106,34 +113,29 @@ int main(int argc, char *argv[]){
     pthread_mutex_init(log_mutex, &attr);
 
     sync_log("SHARED MEMORY CREATED");
-    
-    for (i = 0; i < 3; i++) {
-    	if (fork()==0) {
-    		switch(i) {
-    		
-    		case 0:
-    			taskmanager();
-    			exit(0);
-    			break;
-    			
-    		case 1:
-    			maintenance();
-    			exit(0);
-    			break;
-    			
-    		default:
-    			monitor();
-    			exit(0);
-    			break;
-    			
-    		}
-    	}	
+	
+    int id1 = fork();
+    int id2 = fork();
+
+    if (id1 == 0){
+
+        if (id2 == 0) {
+            taskmanager();
+
+        } else {
+            monitor();
+        }
+
+    } else {
+
+        if (id2 == 0){
+            maintenance();
+        }
     }
 
     for (i=0; i < 3; i++){
         wait(NULL);
     }
-    
     shm_unlink(SHM_NAME);
     sync_log("SIMULATOR CLOSING");
     return 0;
@@ -146,17 +148,25 @@ void maintenance() {
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED");
     //queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    int i;
-
-    for (i = 0; i < conf->num_servers; i++){
+    queuedTask taskQueue[conf->queuePos];
+    int fd = open("TASK_PIPE", O_RDONLY);
+    if (fd == -1){
+        sync_log("ERROR OPENING TASK_PIPE");
+        exit(0);
+    }
+    for (int i = 0; i < conf->num_servers; i++){
         if ((id = fork()) == 0) {
             edgeserver(servers[i]);
             exit(0);
         }
     }
-    
-    for (i=0; i < conf->num_servers; i++) {
-        wait(NULL);
+    task aux;
+    while(1){
+        if(read(fd, &aux, sizeof(task)) == -1){
+            sync_log("ERROR READING FROM TASK_PIPE");
+            exit(0);
+        }
+        
     }
     pthread_t threads[2];
     int id[2];
@@ -164,8 +174,8 @@ void taskmanager(){
     pthread_create(&threads[0], NULL, scheduler, &id[0]);
     id[1] = 1;
     pthread_create(&threads[1], NULL, dispatcher, &id[1]);
-	
-    for(i=0; i<2; i++){
+
+    for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
     }
 }
@@ -208,7 +218,6 @@ void *dispatcher(){
     pthread_exit(NULL);
     return NULL;
 }
-
 void sync_log(char *s) {
     pthread_mutex_lock(log_mutex);
     logfunc(s);
