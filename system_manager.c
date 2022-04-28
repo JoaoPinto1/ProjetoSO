@@ -153,26 +153,36 @@ void maintenance() {
 
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED");
+    
+    pthread_mutex_t *new_task_mutex = PTHREAD_MUTEX_INITIALIZER,
+		*available_servs_mutex = PTHREAD_MUTEX_INITIALIZER;
+    
+    pthread_cond_t *scheduler_cv = PTHREAD_COND_INITIALIZER,
+		*dispatcher_cv = PTHREAD_COND_INITIALIZER;
+	
     taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
+	
     if (fd == -1){
         sync_log("ERROR OPENING TASK_PIPE");
         exit(0);
     }
+	
     for (int i = 0; i < conf->num_servers; i++){
         if ((id = fork()) == 0) {
             edgeserver(servers[i]);
             exit(0);
         }
     }
+	
     char string[SIZETASK];
     task aux1;
     queuedTask aux2;
     
     pthread_t threads[2];
     int id[2];
-
     int offset = 0;
+	
     while(1){
         if(read(fd, string, SIZETASK) == -1){
             sync_log("ERROR READING FROM TASK_PIPE");
@@ -198,19 +208,19 @@ void taskmanager(){
 
 void edgeserver(edgeServer server) {
     char string[50];
-    snprintf(string,40,"%s READY",server.name);
+    snprintf(string, 49, "%s READY", server.name);
     sync_log(string);
 	
     pthread_t threads[2];
     int id[2];
 	
-    for (int i=0; i<2; i++){
+    for (int i = 0; i < 2; i++){
         id[i] = i;
-        pthread_create(&threads[i],NULL, workercpu, &id[i]);
+        pthread_create(&threads[i], NULL, workercpu, &id[i]);
     }
 
     for (int i=0; i<2; i++){
-        pthread_join(threads[i],NULL);
+        pthread_join(threads[i], NULL);
     }
 }
 
