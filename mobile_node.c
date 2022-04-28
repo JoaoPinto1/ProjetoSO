@@ -1,12 +1,15 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include "log.h"
 #include "task.h"
+#define SIZETASK 30
 
 int main(int argc, char* argv[]){
 	if (argc !=5){
@@ -28,11 +31,10 @@ int main(int argc, char* argv[]){
         printf("Named Pipe não encontrado\n");
         return 1;
     }
-    task task1;
-    task1.mi = instrucoes;
-    task1.timelimit = tempomax;
+    char string[SIZETASK];
     for(int i = 0; i < numpedidos; i++){
-        if(write(fd, &task1, sizeof(task)) == -1){
+        snprintf(string,SIZETASK,"%d-%d;%ld;%ld",getpid(),i,instrucoes,tempomax);
+        if (write(fd, string, strlen(string) == -1)){
             printf("Erro escrever no named pipe\n");
             return 1;
         }

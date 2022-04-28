@@ -8,6 +8,7 @@
 #define TASK_H
 
 typedef struct {
+    char *id;
     int mi;
     int timelimit;
 } task;
@@ -15,7 +16,7 @@ typedef struct {
 
 typedef struct{
     task t;
-    float priority;
+    int priority;
 } queuedTask;
 
 #endif //TASK_H

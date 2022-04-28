@@ -1,5 +1,5 @@
 /*
-    system_manger.c
+    system_manager.c
     Joao Pedro Ventura Pinto 2020220907
     Tiago Oliveira Gomes 2020223013
 */
@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include "log.h"
 #include "task.h"
+#define SIZETASK 30
 #define SHM_NAME "SHM"
 
 typedef struct{
@@ -51,6 +52,7 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
+queuedTask *taskQueue;
 
 const char* filename = "config.txt";
 int shm_fd;
@@ -78,7 +80,7 @@ int main(int argc, char *argv[]){
         sync_log("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
-	// criaçao named pipe
+	// criaï¿½ao named pipe
     if (mkfifo("TASK_PIPE", 0777) == -1){
         if(errno != EEXIST) {
             printf("Could not create named pipe\n");
@@ -114,23 +116,27 @@ int main(int argc, char *argv[]){
 
     sync_log("SHARED MEMORY CREATED");
 	
-    int id1 = fork();
-    int id2 = fork();
-
-    if (id1 == 0){
-
-        if (id2 == 0) {
-            taskmanager();
-
-        } else {
-            monitor();
-        }
-
-    } else {
-
-        if (id2 == 0){
-            maintenance();
-        }
+    for (i = 0; i < 3; i++) {
+    	if (fork()==0) {
+    		switch(i) {
+    		
+    		case 0:
+    			taskmanager();
+    			exit(0);
+    			break;
+    			
+    		case 1:
+    			maintenance();
+    			exit(0);
+    			break;
+    			
+    		default:
+    			monitor();
+    			exit(0);
+    			break;
+    			
+    		}
+    	}	
     }
 
     for (i=0; i < 3; i++){
@@ -147,8 +153,7 @@ void maintenance() {
 
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED");
-    //queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    queuedTask taskQueue[conf->queuePos];
+    taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
     if (fd == -1){
         sync_log("ERROR OPENING TASK_PIPE");
@@ -160,24 +165,35 @@ void taskmanager(){
             exit(0);
         }
     }
-    task aux;
+    char string[SIZETASK];
+    task aux1;
+    queuedTask aux2;
+    
+    pthread_t threads[2];
+    int id[2];
+
+    int offset = 0;
     while(1){
-        if(read(fd, &aux, sizeof(task)) == -1){
+        if(read(fd, string, SIZETASK) == -1){
             sync_log("ERROR READING FROM TASK_PIPE");
             exit(0);
         }
-        
-    }
-    pthread_t threads[2];
-    int id[2];
-    id[0] = 0;
-    pthread_create(&threads[0], NULL, scheduler, &id[0]);
-    id[1] = 1;
-    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+        scanf(string,"%s;%d;%d",aux1.id,aux1.mi,aux1.timelimit);
 
-    for(int i=0; i<2; i++){
-        pthread_join(threads[i], NULL);
+        aux2.t = aux1;
+        aux2.priority = 0;
+        taskQueue[i] = aux2;
+        id[0] = 0;
+        pthread_create(&threads[0], NULL, scheduler, &id[0]);
+        id[1] = 1;
+        pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+
+        for(int i=0; i<2; i++){
+            pthread_join(threads[i], NULL);
+        }
+        offset++;
     }
+    close(fd);
 }
 
 void edgeserver(edgeServer server) {
@@ -207,8 +223,19 @@ void monitor() {
     sync_log("PROCESS MONITOR CREATED");
 }
 
-void *scheduler(){
-
+void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
+    int len = sizeof(taskQueue) / sizeof(queuedTask);
+    for (int i = 0; i < len; i++){
+        taskQueue[i].priority = 1;
+        for (int a = 0; a < len; i++){
+            if(taskQueue[i].t > taskQueue[a].t){
+                taskQueue[i].priority++;
+            }
+            else if (taskQueue[i].t == taskQueue[a].t && i > a){
+                taskQueue[i].priority++;
+            }
+        }
+    }
     pthread_exit(NULL);
     return NULL;
 }
