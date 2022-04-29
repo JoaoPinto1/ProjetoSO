@@ -52,6 +52,8 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
+pthread_mutex_t *task_mutex;
+pthread_cond_t cond_task;
 queuedTask *taskQueue;
 
 const char* filename = "config.txt";
@@ -113,6 +115,8 @@ int main(int argc, char *argv[]){
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
     pthread_mutex_init(log_mutex, &attr);
+    pthread_mutex_init(task_mutex,NULL);
+    pthread_cond_init(&cond_task, NULL);
 
     sync_log("SHARED MEMORY CREATED");
 	
@@ -143,6 +147,9 @@ int main(int argc, char *argv[]){
         wait(NULL);
     }
     shm_unlink(SHM_NAME);
+    pthread_mutex_destroy(log_mutex);
+    pthread_mutex_destroy(task_mutex);
+    pthread_cond_destroy(&cond_task);
     sync_log("SIMULATOR CLOSING");
     return 0;
 }
@@ -153,36 +160,30 @@ void maintenance() {
 
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED");
-    
-    pthread_mutex_t *new_task_mutex = PTHREAD_MUTEX_INITIALIZER,
-		*available_servs_mutex = PTHREAD_MUTEX_INITIALIZER;
-    
-    pthread_cond_t *scheduler_cv = PTHREAD_COND_INITIALIZER,
-		*dispatcher_cv = PTHREAD_COND_INITIALIZER;
-	
     taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
-	
     if (fd == -1){
         sync_log("ERROR OPENING TASK_PIPE");
         exit(0);
     }
-	
     for (int i = 0; i < conf->num_servers; i++){
         if ((id = fork()) == 0) {
             edgeserver(servers[i]);
             exit(0);
         }
     }
-	
     char string[SIZETASK];
     task aux1;
     queuedTask aux2;
     
     pthread_t threads[2];
     int id[2];
+    id[0] = 0;
+    pthread_create(&threads[0], NULL, scheduler, &id[0]);
+    id[1] = 1;
+    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+
     int offset = 0;
-	
     while(1){
         if(read(fd, string, SIZETASK) == -1){
             sync_log("ERROR READING FROM TASK_PIPE");
@@ -190,37 +191,36 @@ void taskmanager(){
         }
         scanf(string,"%s;%d;%d",aux1.id,aux1.mi,aux1.timelimit);
 
+        pthread_mutex_lock(task_mutex);
         aux2.t = aux1;
         aux2.priority = 0;
-        taskQueue[i] = aux2;
-        id[0] = 0;
-        pthread_create(&threads[0], NULL, scheduler, &id[0]);
-        id[1] = 1;
-        pthread_create(&threads[1], NULL, dispatcher, &id[1]);
-
-        for(int i=0; i<2; i++){
-            pthread_join(threads[i], NULL);
-        }
+        taskQueue[offset] = aux2;
+        
         offset++;
+        pthread_mutex_unlock(task_mutex);
+        pthread_cond_signal(&cond_task);
+    }
+    for(int i=0; i<2; i++){
+        pthread_join(threads[i], NULL);
     }
     close(fd);
 }
 
 void edgeserver(edgeServer server) {
     char string[50];
-    snprintf(string, 49, "%s READY", server.name);
+    snprintf(string,40,"%s READY",server.name);
     sync_log(string);
 	
     pthread_t threads[2];
     int id[2];
 	
-    for (int i = 0; i < 2; i++){
+    for (int i=0; i<2; i++){
         id[i] = i;
-        pthread_create(&threads[i], NULL, workercpu, &id[i]);
+        pthread_create(&threads[i],NULL, workercpu, &id[i]);
     }
 
     for (int i=0; i<2; i++){
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i],NULL);
     }
 }
 
@@ -234,17 +234,24 @@ void monitor() {
 }
 
 void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
-    int len = sizeof(taskQueue) / sizeof(queuedTask);
-    for (int i = 0; i < len; i++){
-        taskQueue[i].priority = 1;
-        for (int a = 0; a < len; i++){
-            if(taskQueue[i].t > taskQueue[a].t){
-                taskQueue[i].priority++;
-            }
-            else if (taskQueue[i].t == taskQueue[a].t && i > a){
-                taskQueue[i].priority++;
+    while(1){
+
+        while()
+        pthread_mutex_lock(task_mutex);
+        int len = sizeof(taskQueue) / sizeof(queuedTask);
+        for (int i = 0; i < len; i++){
+            taskQueue[i].priority = 1;
+            for (int a = 0; a < len; i++){
+                if(taskQueue[i].t > taskQueue[a].t){
+                    taskQueue[i].priority++;
+                }
+                else if (taskQueue[i].t == taskQueue[a].t && i > a){
+                    taskQueue[i].priority++;
+                }
             }
         }
+        pthread_cond_wait(&cond_task);
+        pthread_mutex_unlock(task_mutex);
     }
     pthread_exit(NULL);
     return NULL;
