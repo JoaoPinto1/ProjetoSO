@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 #include <semaphore.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -55,19 +56,18 @@ pthread_mutex_t *log_mutex;
 pthread_mutex_t *task_mutex;
 pthread_cond_t cond_task;
 queuedTask *taskQueue;
+FILE * fw;
 
-const char* filename = "config.txt";
 int shm_fd;
 pid_t id;
 
 int main(int argc, char *argv[]){
     if (argc != 2) {
-	    logfunc("INCORRECT NUMBER OF ARGUMENTS");
+    	printf("Not enough arguments\n");
 	    exit(-1);
     }
-	
-    logfunc("OFFLOAD SIMULATOR STARTING");
-
+    fw = fopen(argv[1],"a");
+    logfunc("OFFLOAD SIMULATOR STARTING",fw);
     int queuePos, maxWait, num, offset = 0, i;
     const char* filename = argv[1];
 
@@ -82,14 +82,13 @@ int main(int argc, char *argv[]){
         sync_log("Edge servers insuficientes");
         exit(EXIT_FAILURE);
     }
-	// cria�ao named pipe
+	// criacao named pipe
     if (mkfifo("TASK_PIPE", 0777) == -1){
         if(errno != EEXIST) {
             printf("Could not create named pipe\n");
             return 1;
         }
     }
-
     shm_fd = shm_open(SHM_NAME ,O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
 
@@ -178,10 +177,7 @@ void taskmanager(){
     
     pthread_t threads[2];
     int id[2];
-    id[0] = 0;
-    pthread_create(&threads[0], NULL, scheduler, &id[0]);
-    id[1] = 1;
-    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+
 
     int offset = 0;
     while(1){
@@ -189,16 +185,32 @@ void taskmanager(){
             sync_log("ERROR READING FROM TASK_PIPE");
             exit(0);
         }
-        scanf(string,"%s;%d;%d",aux1.id,aux1.mi,aux1.timelimit);
+        if(sscanf(string,"%s;%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
+            pthread_mutex_lock(task_mutex);
 
-        pthread_mutex_lock(task_mutex);
-        aux2.t = aux1;
-        aux2.priority = 0;
-        taskQueue[offset] = aux2;
-        
-        offset++;
-        pthread_mutex_unlock(task_mutex);
-        pthread_cond_signal(&cond_task);
+            if(offset == 0){
+                id[0] = 0;
+                pthread_create(&threads[0], NULL, scheduler, &id[0]);
+                id[1] = 1;
+                pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+            }
+
+            aux2.t = aux1;
+            aux2.priority = 0;
+            aux2.arrive_time = time(NULL);
+            taskQueue[offset] = aux2;
+            printf("TASK INSERIDA NA LISTA\n");
+            offset++;
+            pthread_mutex_unlock(task_mutex);
+            pthread_cond_signal(&cond_task);
+        }
+        else if(strcmp(string,"EXIT") == 0){
+            sync_log("EXIT");
+            break;
+        }
+        else if(strcmp(string,"STATS") == 0){
+            sync_log("STATS");
+        }
     }
     for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
@@ -235,22 +247,21 @@ void monitor() {
 
 void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
     while(1){
-
-        while()
         pthread_mutex_lock(task_mutex);
-        int len = sizeof(taskQueue) / sizeof(queuedTask);
+        pthread_cond_wait(&cond_task,task_mutex);
+        int len = sizeof(&taskQueue) / sizeof(queuedTask);
         for (int i = 0; i < len; i++){
             taskQueue[i].priority = 1;
             for (int a = 0; a < len; i++){
-                if(taskQueue[i].t > taskQueue[a].t){
+                if(taskQueue[i].t.timelimit > taskQueue[a].t.timelimit){
                     taskQueue[i].priority++;
                 }
-                else if (taskQueue[i].t == taskQueue[a].t && i > a){
+                else if (taskQueue[i].t.timelimit == taskQueue[a].t.timelimit && i > a){
                     taskQueue[i].priority++;
                 }
             }
         }
-        pthread_cond_wait(&cond_task);
+        printf("PRIORIDADES AJUSTADAS\n");
         pthread_mutex_unlock(task_mutex);
     }
     pthread_exit(NULL);
@@ -258,12 +269,11 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
 }
 
 void *dispatcher(){
-
     pthread_exit(NULL);
     return NULL;
 }
 void sync_log(char *s) {
     pthread_mutex_lock(log_mutex);
-    logfunc(s);
+    logfunc(s,fw);
     pthread_mutex_unlock(log_mutex);
 }

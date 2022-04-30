@@ -12,12 +12,12 @@ void getcurrtime(char *curr) {
     strftime(curr, TIMELEN, "%H:%M:%S", info);
 }
 
-void logfunc(char *s) {
+void logfunc(char *s, FILE *f) {
     char curr[TIMELEN];
     getcurrtime(curr);
 
-    FILE *f = fopen(LOGFILE, "a");
     printf("%s - %s\n", curr, s);
+    printf("OLA");
     fprintf(f, "%s - %s\n", curr, s);
     
     fclose(f);

@@ -38,7 +38,7 @@ int main(int argc, char* argv[]){
             printf("Erro escrever no named pipe\n");
             return 1;
         }
-        sleep(intervalo);
+        sleep(intervalo*0.001);
     }
     close(fd);
 }

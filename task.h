@@ -16,6 +16,7 @@ typedef struct {
 
 typedef struct{
     task t;
+    float arrive_time;
     int priority;
 } queuedTask;
 

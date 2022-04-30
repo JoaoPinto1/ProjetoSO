@@ -13,6 +13,6 @@
 #include <time.h>
 
 void getcurrtime(char *);
-void logfunc(char *);
+void logfunc(char *,FILE *);
 
 #endif //LOG_H
