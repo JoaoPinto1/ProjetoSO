@@ -4,47 +4,16 @@
     Tiago Oliveira Gomes 2020223013
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <string.h>
-#include <semaphore.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <fcntl.h>
 #include "log.h"
 #include "task.h"
+#include "monitor.h"
+#include "shm.h"
 #define SIZETASK 30
-#define SHM_NAME "SHM"
-
-typedef struct{
-    int queuePos;
-    int maxWait;
-    int num_servers;
-} configs;
-
-typedef struct{
-    int speed;
-    float wait_time;
-    int nivel;
-} vcpu;
-
-typedef struct{
-    char name[32];
-    vcpu vcpus[2];
-} edgeServer;
 
 void taskmanager();
-void monitor();
 void maintenance();
 void edgeserver(edgeServer server);
-void sync_log(char *s);
+void sync_log(char *s, FILE *f);
 void *dispatcher();
 void *scheduler();
 void *workercpu();
@@ -56,7 +25,7 @@ pthread_mutex_t *log_mutex;
 pthread_mutex_t *task_mutex;
 pthread_cond_t cond_task;
 queuedTask *taskQueue;
-FILE * fw;
+FILE *l;
 
 int shm_fd;
 pid_t id;
@@ -66,11 +35,12 @@ int main(int argc, char *argv[]){
     	printf("Not enough arguments\n");
 	    exit(-1);
     }
-    fw = fopen(argv[1],"a");
-    logfunc("OFFLOAD SIMULATOR STARTING",fw);
+    l = fopen(LOGFILE, "a");
+    
+    logfunc("OFFLOAD SIMULATOR STARTING",l);
     int queuePos, maxWait, num, offset = 0, i;
     const char* filename = argv[1];
-
+    
 	
     FILE * f = fopen(filename, "r");
     if (!f) {
@@ -79,7 +49,7 @@ int main(int argc, char *argv[]){
     fscanf(f,"%d %d %d", &queuePos, &maxWait, &num);
 	
     if (num<2){
-        sync_log("Edge servers insuficientes");
+        logfunc("Edge servers insuficientes", conf->log_file);
         exit(EXIT_FAILURE);
     }
 	// criacao named pipe
@@ -99,25 +69,23 @@ int main(int argc, char *argv[]){
     conf->maxWait = maxWait;
     conf->queuePos = queuePos;
     conf->num_servers = num;
+    conf->log_file = l;
     offset += sizeof(configs);
-	
+    
     servers = (edgeServer *) (shm_pointer + offset);
-	
-    for (i = 0; i < num; i++){
+    for (i = 0; i < num; i++) {
         fscanf(f," %[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
     }
 	
     fclose(f);
+    
     offset += num * sizeof(edgeServer);
     log_mutex = (pthread_mutex_t *) (shm_pointer + offset);
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(log_mutex, &attr);
-    pthread_mutex_init(task_mutex,NULL);
-    pthread_cond_init(&cond_task, NULL);
-
-    sync_log("SHARED MEMORY CREATED");
+	pthread_mutex_init(log_mutex, &attr);
+    sync_log("SHARED MEMORY CREATED", conf->log_file);
 	
     for (i = 0; i < 3; i++) {
     	if (fork()==0) {
@@ -149,20 +117,20 @@ int main(int argc, char *argv[]){
     pthread_mutex_destroy(log_mutex);
     pthread_mutex_destroy(task_mutex);
     pthread_cond_destroy(&cond_task);
-    sync_log("SIMULATOR CLOSING");
+    sync_log("SIMULATOR CLOSING", conf->log_file);
     return 0;
 }
 
 void maintenance() {
-    sync_log("PROCESS MAINTENANCE MANAGER CREATED");
+    sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
 }
 
 void taskmanager(){
-    sync_log("PROCESS TASK MANAGER CREATED");
+    sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
     taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
     if (fd == -1){
-        sync_log("ERROR OPENING TASK_PIPE");
+        sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
         exit(0);
     }
     for (int i = 0; i < conf->num_servers; i++){
@@ -182,7 +150,7 @@ void taskmanager(){
     int offset = 0;
     while(1){
         if(read(fd, string, SIZETASK) == -1){
-            sync_log("ERROR READING FROM TASK_PIPE");
+            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
         if(sscanf(string,"%s;%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
@@ -205,11 +173,11 @@ void taskmanager(){
             pthread_cond_signal(&cond_task);
         }
         else if(strcmp(string,"EXIT") == 0){
-            sync_log("EXIT");
+            sync_log("EXIT", conf->log_file);
             break;
         }
         else if(strcmp(string,"STATS") == 0){
-            sync_log("STATS");
+            sync_log("STATS", conf->log_file);
         }
     }
     for(int i=0; i<2; i++){
@@ -221,7 +189,7 @@ void taskmanager(){
 void edgeserver(edgeServer server) {
     char string[50];
     snprintf(string,40,"%s READY",server.name);
-    sync_log(string);
+    sync_log(string, conf->log_file);
 	
     pthread_t threads[2];
     int id[2];
@@ -241,11 +209,8 @@ void *workercpu(){
     return NULL;
 }
 
-void monitor() {
-    sync_log("PROCESS MONITOR CREATED");
-}
 
-void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
+void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual 
     while(1){
         pthread_mutex_lock(task_mutex);
         pthread_cond_wait(&cond_task,task_mutex);
@@ -272,8 +237,5 @@ void *dispatcher(){
     pthread_exit(NULL);
     return NULL;
 }
-void sync_log(char *s) {
-    pthread_mutex_lock(log_mutex);
-    logfunc(s,fw);
-    pthread_mutex_unlock(log_mutex);
-}
+
+
