@@ -15,10 +15,12 @@ void getcurrtime(char *curr) {
 void logfunc(char *s, FILE *f) {
     char curr[TIMELEN];
     getcurrtime(curr);
-
     printf("%s - %s\n", curr, s);
-    printf("OLA");
     fprintf(f, "%s - %s\n", curr, s);
-    
-    fclose(f);
+}
+
+void sync_log(char *s, FILE *f) {
+    pthread_mutex_lock(log_mutex);
+    logfunc(s,f);
+    pthread_mutex_unlock(log_mutex);
 }
