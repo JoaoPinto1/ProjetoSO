@@ -22,8 +22,8 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
-pthread_mutex_t *task_mutex;
-pthread_cond_t cond_task;
+pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
 queuedTask *taskQueue;
 FILE *l;
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 	// criacao named pipe
-    if (mkfifo("TASK_PIPE", 0777) == -1){
+    if (mkfifo("TASK_PIPE", O_CREAT|O_EXCL|0600) == -1){
         if(errno != EEXIST) {
             printf("Could not create named pipe\n");
             return 1;
@@ -109,13 +109,12 @@ int main(int argc, char *argv[]){
     		}
     	}	
     }
-
     for (i=0; i < 3; i++){
         wait(NULL);
     }
     shm_unlink(SHM_NAME);
     pthread_mutex_destroy(log_mutex);
-    pthread_mutex_destroy(task_mutex);
+    pthread_mutex_destroy(&task_mutex);
     pthread_cond_destroy(&cond_task);
     sync_log("SIMULATOR CLOSING", conf->log_file);
     return 0;
@@ -127,18 +126,16 @@ void maintenance() {
 
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
+    int fd;
     taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    int fd = open("TASK_PIPE", O_RDONLY);
-    if (fd == -1){
+    fd = open("TASK_PIPE", O_RDONLY);
+    
+    if (fd < 0){
         sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
         exit(0);
     }
-    for (int i = 0; i < conf->num_servers; i++){
-        if ((id = fork()) == 0) {
-            edgeserver(servers[i]);
-            exit(0);
-        }
-    }
+    
+    printf("OLA %d", getpid());
     char string[SIZETASK];
     task aux1;
     queuedTask aux2;
@@ -146,15 +143,16 @@ void taskmanager(){
     pthread_t threads[2];
     int id[2];
 
-
+	printf("asd");
     int offset = 0;
-    while(1){
-        if(read(fd, string, SIZETASK) == -1){
+    int a=1;
+    while(a != 0){
+        if((a = read(fd, string, SIZETASK)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
         if(sscanf(string,"%s;%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
-            pthread_mutex_lock(task_mutex);
+            pthread_mutex_lock(&task_mutex);
 
             if(offset == 0){
                 id[0] = 0;
@@ -169,7 +167,7 @@ void taskmanager(){
             taskQueue[offset] = aux2;
             printf("TASK INSERIDA NA LISTA\n");
             offset++;
-            pthread_mutex_unlock(task_mutex);
+            pthread_mutex_unlock(&task_mutex);
             pthread_cond_signal(&cond_task);
         }
         else if(strcmp(string,"EXIT") == 0){
@@ -182,6 +180,9 @@ void taskmanager(){
     }
     for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
+    }
+    for (int i = 0; i < conf->num_servers; i++){
+        wait(NULL);
     }
     close(fd);
 }
@@ -212,8 +213,8 @@ void *workercpu(){
 
 void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual 
     while(1){
-        pthread_mutex_lock(task_mutex);
-        pthread_cond_wait(&cond_task,task_mutex);
+        pthread_mutex_lock(&task_mutex);
+        pthread_cond_wait(&cond_task,&task_mutex);
         int len = sizeof(&taskQueue) / sizeof(queuedTask);
         for (int i = 0; i < len; i++){
             taskQueue[i].priority = 1;
@@ -227,7 +228,7 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
             }
         }
         printf("PRIORIDADES AJUSTADAS\n");
-        pthread_mutex_unlock(task_mutex);
+        pthread_mutex_unlock(&task_mutex);
     }
     pthread_exit(NULL);
     return NULL;
@@ -237,5 +238,4 @@ void *dispatcher(){
     pthread_exit(NULL);
     return NULL;
 }
-
 
