@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include "log.h"
 #include "task.h"
-#define SIZETASK 30
 
 int main(int argc, char* argv[]){
 	if (argc !=5){
@@ -34,11 +33,13 @@ int main(int argc, char* argv[]){
     char string[SIZETASK];
     for(int i = 0; i < numpedidos; i++){
         snprintf(string,SIZETASK,"%d-%d;%ld;%ld",getpid(),i,instrucoes,tempomax);
-        if (write(fd, string, strlen(string) == -1)){
+        if (write(fd, string, SIZETASK == -1)){
             printf("Erro escrever no named pipe\n");
             return 1;
         }
-        sleep(intervalo*0.001);
+        printf("enviado: %s\n", string);
+        sleep(intervalo);
+        string[0] = '\0';
     }
     close(fd);
 }

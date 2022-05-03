@@ -6,6 +6,7 @@
 
 #ifndef TASK_H
 #define TASK_H
+#define SIZETASK 30
 
 typedef struct {
     char *id;

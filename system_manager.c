@@ -7,23 +7,22 @@
 #include "log.h"
 #include "task.h"
 #include "monitor.h"
+#include "task_manager.h"
 #include "shm.h"
-#define SIZETASK 30
 
-void taskmanager();
+//void taskmanager();
 void maintenance();
-void edgeserver(edgeServer server);
+//void edgeserver(edgeServer server);
 void sync_log(char *s, FILE *f);
-void *dispatcher();
-void *scheduler();
-void *workercpu();
+//void *dispatcher();
+//void *scheduler();
+//void *workercpu();
 
 void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
-pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
+
 queuedTask *taskQueue;
 FILE *l;
 
@@ -42,7 +41,7 @@ int main(int argc, char *argv[]){
     const char* filename = argv[1];
     
 	
-    FILE * f = fopen(filename, "r");
+    FILE * f = fopen(filename, "r");printf("boas\n");
     if (!f) {
         exit(EXIT_FAILURE);
     }
@@ -53,7 +52,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 	// criacao named pipe
-    if (mkfifo("TASK_PIPE", O_CREAT|O_EXCL|0600) == -1){
+    if (mkfifo("TASK_PIPE", O_CREAT|O_EXCL|0777) == -1){
         if(errno != EEXIST) {
             printf("Could not create named pipe\n");
             return 1;
@@ -114,8 +113,6 @@ int main(int argc, char *argv[]){
     }
     shm_unlink(SHM_NAME);
     pthread_mutex_destroy(log_mutex);
-    pthread_mutex_destroy(&task_mutex);
-    pthread_cond_destroy(&cond_task);
     sync_log("SIMULATOR CLOSING", conf->log_file);
     return 0;
 }
@@ -124,7 +121,7 @@ void maintenance() {
     sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
 }
 
-void taskmanager(){
+/*void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
     int fd;
     taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
@@ -237,5 +234,4 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
 void *dispatcher(){
     pthread_exit(NULL);
     return NULL;
-}
-
+}*/

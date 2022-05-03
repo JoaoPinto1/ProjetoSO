@@ -1,5 +1,5 @@
 CC	= gcc
-OBJS	= log.o monitor.o system_manager.o
+OBJS	= log.o monitor.o task_manager.o system_manager.o
 PROG	= offload_manager
 CFLAGS	= -Wall -pthread -lrt -g
 all:	$(PROG) mobile_node
@@ -16,7 +16,7 @@ mobile_node:	mobile_node.c
 
 
 log.o:	log.c log.h
-shm.o:	shm.h
+task_manager.o:	shm.h task_manager.h task_manager.c task.h
 monitor.o:	shm.h monitor.c monitor.h
-system_manager.o:	system_manager.c log.c log.h shm.h monitor.h monitor.c
+system_manager.o:	system_manager.c log.c log.h shm.h monitor.h monitor.c task_manager.h task_manager.c
 
