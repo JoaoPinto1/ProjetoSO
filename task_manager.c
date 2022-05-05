@@ -27,10 +27,15 @@ void taskmanager(){
     
     pthread_t threads[2];
     int id[2], r = 0;
+    size_t to_read;
     int offset = 0;
     
     while(r != conf->queuePos){
-        if(read(fd, string, SIZETASK) == -1){
+        if(read(fd, to_read, sizeof(size_t)) == -1){
+            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
+            exit(0);
+        }
+        if(read(fd, string, to_read) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
