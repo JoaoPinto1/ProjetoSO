@@ -1,35 +1,54 @@
 #include "task_manager.h"
 
 queuedTask *taskQueue;
-pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
-void edgeserver(edgeServer server);
+pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER, 
+  scheduled_mutex = PTHREAD_MUTEX_INITIALIZER, 
+  vcpu_mutex = PTHREAD_MUTEX_INITIALIZER, 
+  empty_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER,
+  empty_cv = PTHREAD_COND_INITIALIZER;
+void edgeserver(edgeServer server, int i);
 void *workercpu();
+int **pipes, pos, v;
 
+
+void free_server() {
+
+}
 void taskmanager(){
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
+    
+    pipes = (int **) malloc(conf->num_servers * 2 * sizeof(int));
+    for(int i = 0; i < conf->num_servers; i++){
+    	pipe(pipes[i]);
+    }
     queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    printf("%d\n", conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
     if (fd == -1){
-        sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
-        exit(0);
+      sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
+      exit(0);
     }
-    /*for (int i = 0; i < conf->num_servers; i++){
+    /*
+    for (int i = 0; i < conf->num_servers; i++){
         if (fork() == 0) {
-            edgeserver(servers[i]);
+            edgeserver(servers[i], i);
             exit(0);
         }
     }*/
-    char string[SIZETASK] = "huh";
+    int id[2]; 
+    pthread_t threads[2];
+    id[0] = 0;
+    pthread_create(&threads[0], NULL, scheduler, &id[0]);
+    id[1] = 1;
+    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+
+    char string[SIZETASK];
     task aux1;
     queuedTask aux2;
+    r = 0;
+    int to_read;
     
-    pthread_t threads[2];
-    int id[2], r = 0, to_read;
-    int offset = 0;
-    
-    while(r != conf->queuePos){
+    while(1){
         if(read(fd, &to_read, sizeof(int)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
@@ -38,26 +57,18 @@ void taskmanager(){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
-        r++;
-        printf("lido: %s\n", string);
+        
         if(sscanf(string,"%[^;];%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
             pthread_mutex_lock(&task_mutex);
-
-            if(offset == 0){
-                id[0] = 0;
-                pthread_create(&threads[0], NULL, scheduler, &id[0]);
-                id[1] = 1;
-                pthread_create(&threads[1], NULL, dispatcher, &id[1]);
-            }
-
             aux2.t = aux1;
             aux2.priority = 0;
-            aux2.arrive_time = time(NULL);
-            taskQueue[offset] = aux2;
+            aux2.arrive_time = clock();
+            taskQueue[pos] = aux2;
             printf("TASK INSERIDA NA LISTA\n");
-            offset++;
-            pthread_mutex_unlock(&task_mutex);
+            pos++;
+            pthread_mutex_lock(&vcpu_mutex);
             pthread_cond_signal(&cond_task);
+            pthread_mutex_unlock(&vcpu_mutex);
         }
         
         else if(strcmp(string,"EXIT") == 0){
@@ -81,7 +92,7 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
         pthread_mutex_lock(&task_mutex);
         pthread_cond_wait(&cond_task,&task_mutex);
         int len = sizeof(&taskQueue) / sizeof(queuedTask);
-        for (int i = 0; i < len; i++){
+        for (int i = 0; i < conf->queuePos && strcmp(taskQueue[i].id, "") != 0; i++){
             taskQueue[i].priority = 1;
             for (int a = 0; a < len; i++){
                 if(taskQueue[i].t.timelimit > taskQueue[a].t.timelimit){
@@ -92,6 +103,9 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
                 }
             }
         }
+        for(int i = 0; i< len; i++){
+        	
+        }
         printf("PRIORIDADES AJUSTADAS\n");
         pthread_mutex_unlock(&task_mutex);
     }
@@ -100,11 +114,14 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
 }
 
 void *dispatcher(){
+    sem_wait(&count_cpu);
+    
+
     pthread_exit(NULL);
     return NULL;
 }
 
-void edgeserver(edgeServer server) {
+void edgeserver(edgeServer server, int i) {
     char string[50];
     snprintf(string,40,"%s READY",server.name);
     sync_log(string, conf->log_file);
@@ -123,6 +140,8 @@ void edgeserver(edgeServer server) {
 }
 
 void *workercpu(){
+    sem_post(&count_cpu);
+
     pthread_exit(NULL);
     return NULL;
 }
