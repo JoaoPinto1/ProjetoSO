@@ -33,7 +33,7 @@ int main(int argc, char* argv[]){
     char string[SIZETASK];
     for(int i = 0; i < numpedidos; i++){
         snprintf(string,SIZETASK,"%d-%d;%ld;%ld",getpid(),i,instrucoes,tempomax);
-        if (write(fd, string, SIZETASK == -1)){
+        if (write(fd, string, SIZETASK) == -1){
             printf("Erro escrever no named pipe\n");
             return 1;
         }
