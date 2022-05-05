@@ -18,9 +18,7 @@
 #define SHM_NAME "SHM"
 
 typedef struct {
-    int queuePos;
-    int maxWait;
-    int num_servers;
+    int queuePos, maxWait, num_servers, perf_flag;
     FILE *log_file;
 } configs;
 
