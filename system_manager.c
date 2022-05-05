@@ -69,6 +69,7 @@ int main(int argc, char *argv[]){
     conf->queuePos = queuePos;
     conf->num_servers = num;
     conf->log_file = l;
+    conf->perf_flag = 1;
     offset += sizeof(configs);
     
     servers = (edgeServer *) (shm_pointer + offset);
