@@ -26,12 +26,11 @@ void taskmanager(){
     queuedTask aux2;
     
     pthread_t threads[2];
-    int id[2], r = 0;
-    size_t to_read;
+    int id[2], r = 0, to_read;
     int offset = 0;
     
     while(r != conf->queuePos){
-        if(read(fd, to_read, sizeof(size_t)) == -1){
+        if(read(fd, &to_read, sizeof(int)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
