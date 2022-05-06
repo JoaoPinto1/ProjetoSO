@@ -1,17 +1,19 @@
 #include "task_manager.h"
 
 queuedTask *taskQueue;
-pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER, 
+pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER, 
   scheduled_mutex = PTHREAD_MUTEX_INITIALIZER, 
   vcpu_mutex = PTHREAD_MUTEX_INITIALIZER, 
   empty_mutex = PTHREAD_MUTEX_INITIALIZER;
+  
 pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER,
-  empty_cv = PTHREAD_COND_INITIALIZER;
+  operation_cv = PTHREAD_COND_INITIALIZER;
+  
 void edgeserver(edgeServer server, int i);
 void *workercpu();
 int **pipes, pos, v;
 
-
+int op;
 void free_server() {
 
 }
@@ -22,7 +24,8 @@ void taskmanager(){
     for(int i = 0; i < conf->num_servers; i++){
     	pipe(pipes[i]);
     }
-    queuedTask *taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
+    op = 0;
+	taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDONLY);
     if (fd == -1){
       sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
@@ -38,17 +41,17 @@ void taskmanager(){
     int id[2]; 
     pthread_t threads[2];
     id[0] = 0;
-    pthread_create(&threads[0], NULL, scheduler, &id[0]);
+    pthread_create(&threads[0], NULL, scheduler, NULL);
     id[1] = 1;
-    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
+    pthread_create(&threads[1], NULL, dispatcher, NULL);
 
-    char string[SIZETASK];
-    task aux1;
-    queuedTask aux2;
-    r = 0;
-    int to_read;
+    char string[SIZETASK], tid[SIZETASK];
+    pos = 0;
     
     while(1){
+    	int to_read, mi, timeLimit;
+    	strcpy(string, "");
+    	strcpy(tid, "");
         if(read(fd, &to_read, sizeof(int)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
@@ -58,17 +61,23 @@ void taskmanager(){
             exit(0);
         }
         
-        if(sscanf(string,"%[^;];%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
-            pthread_mutex_lock(&task_mutex);
-            aux2.t = aux1;
-            aux2.priority = 0;
-            aux2.arrive_time = clock();
-            taskQueue[pos] = aux2;
-            printf("TASK INSERIDA NA LISTA\n");
+        if(sscanf(string,"%[^;];%d;%d",tid,&mi,&timeLimit) == 3){
+            pthread_mutex_lock(&operation_mutex);
+            while (op != 0 || pos == conf->queuePos) {
+            	pthread_cond_wait(&operation_cv, &operation_mutex);
+            }
+            op = 0;
+            pthread_cond_broadcast(&operation_cv);
+    	    printf("INSERT'S TURN\n");
+            strcpy(taskQueue[pos].t.id, tid);
+            taskQueue[pos].priority = 0;
+            taskQueue[pos].arrive_time = 20;
+            printf("TASK INSERIDA NA LISTA: %s\n", taskQueue[pos].t.id);
             pos++;
-            pthread_mutex_lock(&vcpu_mutex);
-            pthread_cond_signal(&cond_task);
-            pthread_mutex_unlock(&vcpu_mutex);
+            
+            op = 1;
+            pthread_cond_broadcast(&operation_cv);
+            pthread_mutex_unlock(&operation_mutex);
         }
         
         else if(strcmp(string,"EXIT") == 0){
@@ -80,21 +89,22 @@ void taskmanager(){
             sync_log("STATS", conf->log_file);
         }
     }
-    
     for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
     }
     close(fd);
 }
 
-void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual 
+void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
     while(1){
-        pthread_mutex_lock(&task_mutex);
-        pthread_cond_wait(&cond_task,&task_mutex);
-        int len = sizeof(&taskQueue) / sizeof(queuedTask);
-        for (int i = 0; i < conf->queuePos && strcmp(taskQueue[i].id, "") != 0; i++){
+    
+    	pthread_mutex_lock(&operation_mutex);
+    	while (op != 1) {
+    	    pthread_cond_wait(&operation_cv, &operation_mutex);
+    	}
+        for (int i = 0; i < pos; i++){
             taskQueue[i].priority = 1;
-            for (int a = 0; a < len; i++){
+            for (int a = 0; a < conf->queuePos; a++){
                 if(taskQueue[i].t.timelimit > taskQueue[a].t.timelimit){
                     taskQueue[i].priority++;
                 }
@@ -103,22 +113,30 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
                 }
             }
         }
-        for(int i = 0; i< len; i++){
-        	
-        }
         printf("PRIORIDADES AJUSTADAS\n");
-        pthread_mutex_unlock(&task_mutex);
+        op = 2;
+        pthread_cond_broadcast(&operation_cv);
+        pthread_mutex_unlock(&operation_mutex);
     }
     pthread_exit(NULL);
     return NULL;
 }
 
 void *dispatcher(){
-    sem_wait(&count_cpu);
+    while (1) {
+        pthread_mutex_lock(&operation_mutex);
+        while (op != 2) {
+    	    pthread_cond_wait(&operation_cv, &operation_mutex);
+    	}
+    	printf("DISPATCHER STUFF HERE\n");
+    	op = 0;
+    	pthread_cond_broadcast(&operation_cv);
+        pthread_mutex_unlock(&operation_mutex);
     
-
+    }
     pthread_exit(NULL);
     return NULL;
+    
 }
 
 void edgeserver(edgeServer server, int i) {
@@ -140,8 +158,6 @@ void edgeserver(edgeServer server, int i) {
 }
 
 void *workercpu(){
-    sem_post(&count_cpu);
-
     pthread_exit(NULL);
     return NULL;
 }
