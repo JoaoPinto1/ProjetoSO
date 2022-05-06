@@ -1,3 +1,4 @@
+
 #include "task_manager.h"
 
 queuedTask *taskQueue;
@@ -26,7 +27,7 @@ void taskmanager(){
     }
     op = 0;
 	taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    int fd = open("TASK_PIPE", O_RDONLY);
+    int fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1){
       sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
       exit(0);
@@ -45,22 +46,47 @@ void taskmanager(){
     id[1] = 1;
     pthread_create(&threads[1], NULL, dispatcher, NULL);
 
-    char string[SIZETASK], tid[SIZETASK];
+    char string[SIZETASK], tid[SIZETASK], buffer[SIZETASK - 4];
     pos = 0;
     
     while(1){
-    	int to_read, mi, timeLimit;
+    	
+    	int to_read, mi, timeLimit, len;
     	strcpy(string, "");
     	strcpy(tid, "");
-        if(read(fd, &to_read, sizeof(int)) == -1){
+        if((len = read(fd, buffer, 4)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
-        if(read(fd, string, to_read) == -1){
-            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
-            exit(0);
+        buffer[len] = '\0';
+        strcat(string, buffer);
+        printf("%s\n", string);
+        if(strcmp(string,"EXIT") == 0){
+            sync_log("EXIT", conf->log_file);
+            break;
         }
         
+        if((len = read(fd, buffer, 1)) == -1){
+            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
+            exit(0);
+        }
+        buffer[len] = '\0';
+        strcat(string, buffer);
+        printf("%s\n", string);
+        
+        if(strcmp(string,"STATS") == 0){
+            sync_log("STATS", conf->log_file);
+            continue;
+        }
+        
+        if((len = read(fd, buffer, SIZETASK - 4)) == -1){
+            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
+            exit(0);
+        }
+        printf("%s\n", buffer);
+        buffer[len] = '\0';
+        printf("%s\n", string);
+        strcat(string, buffer);
         if(sscanf(string,"%[^;];%d;%d",tid,&mi,&timeLimit) == 3){
             pthread_mutex_lock(&operation_mutex);
             while (op != 0 || pos == conf->queuePos) {
@@ -79,16 +105,8 @@ void taskmanager(){
             pthread_cond_broadcast(&operation_cv);
             pthread_mutex_unlock(&operation_mutex);
         }
-        
-        else if(strcmp(string,"EXIT") == 0){
-            sync_log("EXIT", conf->log_file);
-            break;
-        }
-        
-        else if(strcmp(string,"STATS") == 0){
-            sync_log("STATS", conf->log_file);
-        }
     }
+    
     for(int i=0; i<2; i++){
         pthread_join(threads[i], NULL);
     }
@@ -128,7 +146,7 @@ void *dispatcher(){
         while (op != 2) {
     	    pthread_cond_wait(&operation_cv, &operation_mutex);
     	}
-    	printf("DISPATCHER STUFF HERE\n");
+    	printf("DISPATCHER SHIT\n");
     	op = 0;
     	pthread_cond_broadcast(&operation_cv);
         pthread_mutex_unlock(&operation_mutex);
