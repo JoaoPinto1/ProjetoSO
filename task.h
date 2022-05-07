@@ -9,7 +9,7 @@
 #define SIZETASK 30
 
 typedef struct {
-    char *id;
+    char id[SIZETASK];
     int mi;
     int timelimit;
 } task;

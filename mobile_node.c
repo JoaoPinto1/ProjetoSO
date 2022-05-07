@@ -34,16 +34,13 @@ int main(int argc, char* argv[]){
     for(int i = 0; i < numpedidos; i++){
         snprintf(string,SIZETASK,"%d-%d;%ld;%ld",getpid(),i,instrucoes,tempomax);
         int to_write = strlen(string);
-	if (write(fd, &to_write, sizeof(int)) == -1){
-            printf("Erro escrever no named pipe\n");
-            return 1;
-        }
-        if (write(fd, string, strlen(string)) == -1){
+	
+        if (write(fd, string, SIZETASK) == -1){
             printf("Erro escrever no named pipe\n");
             return 1;
         }	
         printf("enviado: %s\n", string);
-        sleep(intervalo);
+        sleep(intervalo*0.01);
         string[0] = '\0';
     }
     close(fd);

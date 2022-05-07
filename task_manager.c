@@ -1,4 +1,3 @@
-
 #include "task_manager.h"
 
 queuedTask *taskQueue;
@@ -9,12 +8,11 @@ pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER,
   
 pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER,
   operation_cv = PTHREAD_COND_INITIALIZER;
-  
 void edgeserver(edgeServer server, int i);
 void *workercpu();
 int **pipes, pos, v;
 
-int op;
+enum operation{insert, schedule, dispatch} op;
 void free_server() {
 
 }
@@ -25,20 +23,19 @@ void taskmanager(){
     for(int i = 0; i < conf->num_servers; i++){
     	pipe(pipes[i]);
     }
-    op = 0;
+    op = insert;
 	taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
     int fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1){
       sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
       exit(0);
     }
-    /*
     for (int i = 0; i < conf->num_servers; i++){
         if (fork() == 0) {
             edgeserver(servers[i], i);
             exit(0);
         }
-    }*/
+    }
     int id[2]; 
     pthread_t threads[2];
     id[0] = 0;
@@ -60,7 +57,7 @@ void taskmanager(){
         }
         buffer[len] = '\0';
         strcat(string, buffer);
-        printf("%s\n", string);
+        
         if(strcmp(string,"EXIT") == 0){
             sync_log("EXIT", conf->log_file);
             break;
@@ -72,39 +69,41 @@ void taskmanager(){
         }
         buffer[len] = '\0';
         strcat(string, buffer);
-        printf("%s\n", string);
-        
+        printf("%s %d\n", string, strlen(string));
         if(strcmp(string,"STATS") == 0){
             sync_log("STATS", conf->log_file);
             continue;
         }
         
-        if((len = read(fd, buffer, SIZETASK - 4)) == -1){
+        if((len = read(fd, buffer, SIZETASK - 5)) == -1){
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
-        printf("%s\n", buffer);
         buffer[len] = '\0';
-        printf("%s\n", string);
         strcat(string, buffer);
+        
         if(sscanf(string,"%[^;];%d;%d",tid,&mi,&timeLimit) == 3){
             pthread_mutex_lock(&operation_mutex);
-            while (op != 0 || pos == conf->queuePos) {
+            while (op != insert || pos == conf->queuePos) {
             	pthread_cond_wait(&operation_cv, &operation_mutex);
             }
-            op = 0;
+            op = insert;
             pthread_cond_broadcast(&operation_cv);
+            
     	    printf("INSERT'S TURN\n");
             strcpy(taskQueue[pos].t.id, tid);
+            taskQueue[pos].t.mi = mi;
+            taskQueue[pos].t.timelimit = timeLimit;
             taskQueue[pos].priority = 0;
             taskQueue[pos].arrive_time = 20;
             printf("TASK INSERIDA NA LISTA: %s\n", taskQueue[pos].t.id);
             pos++;
             
-            op = 1;
+            op = schedule;
             pthread_cond_broadcast(&operation_cv);
             pthread_mutex_unlock(&operation_mutex);
         }
+        sleep(1);
     }
     
     for(int i=0; i<2; i++){
@@ -117,12 +116,12 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
     while(1){
     
     	pthread_mutex_lock(&operation_mutex);
-    	while (op != 1) {
+    	while (op != schedule) {
     	    pthread_cond_wait(&operation_cv, &operation_mutex);
     	}
         for (int i = 0; i < pos; i++){
             taskQueue[i].priority = 1;
-            for (int a = 0; a < conf->queuePos; a++){
+            for (int a = 0; a < pos; a++){
                 if(taskQueue[i].t.timelimit > taskQueue[a].t.timelimit){
                     taskQueue[i].priority++;
                 }
@@ -132,7 +131,10 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
             }
         }
         printf("PRIORIDADES AJUSTADAS\n");
-        op = 2;
+        for (int i = 0; i < pos; i++) {
+        	printf("%s - %d\n", taskQueue[i].t.id, taskQueue[i].priority);
+        }
+        op = dispatch;
         pthread_cond_broadcast(&operation_cv);
         pthread_mutex_unlock(&operation_mutex);
     }
@@ -143,11 +145,11 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
 void *dispatcher(){
     while (1) {
         pthread_mutex_lock(&operation_mutex);
-        while (op != 2) {
+        while (op != dispatch) {
     	    pthread_cond_wait(&operation_cv, &operation_mutex);
     	}
-    	printf("DISPATCHER SHIT\n");
-    	op = 0;
+    	printf("DISPATCHER STUFF\n");
+    	op = insert;
     	pthread_cond_broadcast(&operation_cv);
         pthread_mutex_unlock(&operation_mutex);
     
