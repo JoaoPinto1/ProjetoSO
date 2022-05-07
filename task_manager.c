@@ -1,13 +1,13 @@
 #include "task_manager.h"
 
 queuedTask *taskQueue;
-pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER, 
-  scheduled_mutex = PTHREAD_MUTEX_INITIALIZER, 
-  vcpu_mutex = PTHREAD_MUTEX_INITIALIZER, 
-  empty_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER,
+scheduled_mutex = PTHREAD_MUTEX_INITIALIZER,
+vcpu_mutex = PTHREAD_MUTEX_INITIALIZER,
+empty_mutex = PTHREAD_MUTEX_INITIALIZER;
   
 pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER,
-  operation_cv = PTHREAD_COND_INITIALIZER;
+operation_cv = PTHREAD_COND_INITIALIZER;
 void edgeserver(edgeServer server, int i);
 void *workercpu();
 int **pipes, pos, v;
@@ -39,9 +39,9 @@ void taskmanager(){
     int id[2]; 
     pthread_t threads[2];
     id[0] = 0;
-    pthread_create(&threads[0], NULL, scheduler, NULL);
+    pthread_create(&threads[0], NULL, scheduler, &id[0]);
     id[1] = 1;
-    pthread_create(&threads[1], NULL, dispatcher, NULL);
+    pthread_create(&threads[1], NULL, dispatcher, &id[1]);
 
     char string[SIZETASK], tid[SIZETASK], buffer[SIZETASK - 4];
     pos = 0;
@@ -69,7 +69,7 @@ void taskmanager(){
         }
         buffer[len] = '\0';
         strcat(string, buffer);
-        printf("%s %d\n", string, strlen(string));
+        printf("%s %ld\n", string, strlen(string));
         if(strcmp(string,"STATS") == 0){
             sync_log("STATS", conf->log_file);
             continue;
@@ -95,7 +95,7 @@ void taskmanager(){
             taskQueue[pos].t.mi = mi;
             taskQueue[pos].t.timelimit = timeLimit;
             taskQueue[pos].priority = 0;
-            taskQueue[pos].arrive_time = 20;
+            taskQueue[pos].arrive_time = (int) clock()/CLOCKS_PER_SEC;
             printf("TASK INSERIDA NA LISTA: %s\n", taskQueue[pos].t.id);
             pos++;
             
@@ -130,7 +130,6 @@ void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual
                 }
             }
         }
-        printf("PRIORIDADES AJUSTADAS\n");
         for (int i = 0; i < pos; i++) {
         	printf("%s - %d\n", taskQueue[i].t.id, taskQueue[i].priority);
         }
@@ -148,7 +147,28 @@ void *dispatcher(){
         while (op != dispatch) {
     	    pthread_cond_wait(&operation_cv, &operation_mutex);
     	}
-    	printf("DISPATCHER STUFF\n");
+        queuedTask t_aux;
+    	for(int i = 0; i < pos; i++){
+            if(taskQueue[i].priority == 1){
+                t_aux = taskQueue[i];
+                if(conf->flag_servers=='n'){
+                    int aux = 0;
+                    for(int a = 0; a < conf->num_servers; a++){
+                        if(servers[a].vcpus[0].speed > (t_aux.t.timelimit - (t_aux.arrive_time - (int)(clock()/CLOCKS_PER_SEC)))/t_aux.t.mi*1000){
+                            aux++;
+                            close(pipes[a][0]);
+                            int send = (t_aux.t.mi*1000)/servers[a].vcpus[0].speed;
+                            write(pipes[a][1], &send, sizeof(int));
+                            printf("Enviada task\n");
+                            break;
+                        }
+                    }
+                    if(aux == 0){
+                        sync_log("TASK REMOVED DUE TO LACK OF TIME TO EXECUTE", conf->log_file);
+                    }
+                }
+            }
+    	}
     	op = insert;
     	pthread_cond_broadcast(&operation_cv);
         pthread_mutex_unlock(&operation_mutex);
@@ -159,7 +179,7 @@ void *dispatcher(){
     
 }
 
-void edgeserver(edgeServer server, int i) {
+void edgeserver(edgeServer server, int num) {
     char string[50];
     snprintf(string,40,"%s READY",server.name);
     sync_log(string, conf->log_file);
@@ -168,7 +188,7 @@ void edgeserver(edgeServer server, int i) {
     int id[2];
 	
     for (int i=0; i<2; i++){
-        id[i] = i;
+        id[i] = 10*num+i;
         pthread_create(&threads[i],NULL, workercpu, &id[i]);
     }
 
@@ -177,7 +197,19 @@ void edgeserver(edgeServer server, int i) {
     }
 }
 
-void *workercpu(){
+void *workercpu(void *ptr){
+    if(*(int*)ptr % 10 == 1){
+        pthread_mutex_lock(&vcpu_mutex);
+        while(conf->flag_servers == 'n'){
+            pthread_cond_wait(&vcpu_cv, &vcpu_mutex);
+        }
+    }
+    int num = (int) (*(int*)ptr / 10);
+    int gosleep;
+    close(pipes[num][1]);
+    read(pipes[num][0], &gosleep, sizeof(int));
+    printf("Recebi task go sleep: %d\n",gosleep);
+    sleep(gosleep);
     pthread_exit(NULL);
     return NULL;
 }

@@ -10,20 +10,14 @@
 #include "task_manager.h"
 #include "shm.h"
 
-//void taskmanager();
 void maintenance();
-//void edgeserver(edgeServer server);
 void sync_log(char *s, FILE *f);
-//void *dispatcher();
-//void *scheduler();
-//void *workercpu();
 
 void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 pthread_mutex_t *log_mutex;
 
-queuedTask *taskQueue;
 FILE *l;
 
 int shm_fd;
@@ -51,7 +45,6 @@ int main(int argc, char *argv[]){
         logfunc("Edge servers insuficientes", conf->log_file);
         exit(EXIT_FAILURE);
     }
-	// criacao named pipe
     if (mkfifo("TASK_PIPE", O_CREAT|O_EXCL|0777) == -1){
         if(errno != EEXIST) {
             printf("Could not create named pipe\n");
@@ -74,11 +67,15 @@ int main(int argc, char *argv[]){
     servers = (edgeServer *) (shm_pointer + offset);
     for (i = 0; i < num; i++) {
         fscanf(f," %[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
+        if(servers[i].vcpus[0].speed < servers[i].vcpus[1].speed){
+            int aux = servers[i].vcpus[0].speed;
+            servers[i].vcpus[0].speed = servers[i].vcpus[1].speed;
+            servers[i].vcpus[1].speed = aux;
+        }
     }
-	
     fclose(f);
-    
     offset += num * sizeof(edgeServer);
+
     log_mutex = (pthread_mutex_t *) (shm_pointer + offset);
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -104,7 +101,6 @@ int main(int argc, char *argv[]){
     			monitor();
     			exit(0);
     			break;
-    			
     		}
     	}	
     }
@@ -121,117 +117,3 @@ void maintenance() {
     sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
 }
 
-/*void taskmanager(){
-    sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
-    int fd;
-    taskQueue = (queuedTask *) malloc(sizeof(queuedTask) * conf->queuePos);
-    fd = open("TASK_PIPE", O_RDONLY);
-    
-    if (fd < 0){
-        sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
-        exit(0);
-    }
-    
-    printf("OLA %d", getpid());
-    char string[SIZETASK];
-    task aux1;
-    queuedTask aux2;
-    
-    pthread_t threads[2];
-    int id[2];
-
-	printf("asd");
-    int offset = 0;
-    int a=1;
-    while(a != 0){
-        if((a = read(fd, string, SIZETASK)) == -1){
-            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
-            exit(0);
-        }
-        if(sscanf(string,"%s;%d;%d",aux1.id,&aux1.mi,&aux1.timelimit) == 3){
-            pthread_mutex_lock(&task_mutex);
-
-            if(offset == 0){
-                id[0] = 0;
-                pthread_create(&threads[0], NULL, scheduler, &id[0]);
-                id[1] = 1;
-                pthread_create(&threads[1], NULL, dispatcher, &id[1]);
-            }
-
-            aux2.t = aux1;
-            aux2.priority = 0;
-            aux2.arrive_time = time(NULL);
-            taskQueue[offset] = aux2;
-            printf("TASK INSERIDA NA LISTA\n");
-            offset++;
-            pthread_mutex_unlock(&task_mutex);
-            pthread_cond_signal(&cond_task);
-        }
-        else if(strcmp(string,"EXIT") == 0){
-            sync_log("EXIT", conf->log_file);
-            break;
-        }
-        else if(strcmp(string,"STATS") == 0){
-            sync_log("STATS", conf->log_file);
-        }
-    }
-    for(int i=0; i<2; i++){
-        pthread_join(threads[i], NULL);
-    }
-    for (int i = 0; i < conf->num_servers; i++){
-        wait(NULL);
-    }
-    close(fd);
-}
-
-void edgeserver(edgeServer server) {
-    char string[50];
-    snprintf(string,40,"%s READY",server.name);
-    sync_log(string, conf->log_file);
-	
-    pthread_t threads[2];
-    int id[2];
-	
-    for (int i=0; i<2; i++){
-        id[i] = i;
-        pthread_create(&threads[i],NULL, workercpu, &id[i]);
-    }
-
-    for (int i=0; i<2; i++){
-        pthread_join(threads[i],NULL);
-    }
-}
-
-void *workercpu(){
-    pthread_exit(NULL);
-    return NULL;
-}
-
-
-void *scheduler(){ //tempo de chegada + tempo maximo - tempo atual 
-    while(1){
-        pthread_mutex_lock(&task_mutex);
-        pthread_cond_wait(&cond_task,&task_mutex);
-        int len = sizeof(&taskQueue) / sizeof(queuedTask);
-        for (int i = 0; i < len; i++){
-            taskQueue[i].priority = 1;
-            for (int a = 0; a < len; i++){
-                if(taskQueue[i].t.timelimit > taskQueue[a].t.timelimit){
-                    taskQueue[i].priority++;
-                }
-                else if (taskQueue[i].t.timelimit == taskQueue[a].t.timelimit && i > a){
-                    taskQueue[i].priority++;
-                }
-            }
-        }
-        printf("PRIORIDADES AJUSTADAS\n");
-        pthread_mutex_unlock(&task_mutex);
-    }
-    pthread_exit(NULL);
-    return NULL;
-}
-
-void *dispatcher(){
-    pthread_exit(NULL);
-    return NULL;
-}*/

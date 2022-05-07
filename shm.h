@@ -21,13 +21,13 @@ typedef struct {
     int queuePos;
     int maxWait;
     int num_servers;
+    char flag_servers;
     FILE *log_file;
 } configs;
 
 typedef struct {
     int speed;
     float wait_time;
-    int nivel;
 } vcpu;
 
 typedef struct{
