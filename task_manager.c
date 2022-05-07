@@ -200,7 +200,7 @@ void edgeserver(edgeServer server, int num) {
 void *workercpu(void *ptr){
     if(*(int*)ptr % 10 == 1){
         pthread_mutex_lock(&vcpu_mutex);
-        while(conf->flag_servers == 'n'){
+        while(conf->flag_servers == 'n' && conf->flag_servers != 's'){
             pthread_cond_wait(&vcpu_cv, &vcpu_mutex);
         }
     }
