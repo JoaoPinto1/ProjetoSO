@@ -17,22 +17,26 @@
 #include <fcntl.h>
 #define SHM_NAME "SHM"
 
-typedef struct {
+typedef struct
+{
     int queuePos;
     int maxWait;
     int num_servers;
-    char flag_servers;
+    int flag_servers;
     FILE *log_file;
 } configs;
 
-typedef struct {
+typedef struct
+{
     int speed;
     float wait_time;
 } vcpu;
 
-typedef struct{
+typedef struct
+{
     char name[32];
     vcpu vcpus[2];
+    int performance_lvl;
 } edgeServer;
 
 extern void *shm_pointer;
@@ -40,5 +44,4 @@ extern configs *conf;
 extern edgeServer *servers;
 extern pthread_mutex_t *log_mutex;
 
-
-#endif //TASK_MANAGER_H
+#endif // TASK_MANAGER_H
