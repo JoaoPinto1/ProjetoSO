@@ -5,22 +5,28 @@
 */
 
 #include "log.h"
-
+#include "shm.h"
 void getcurrtime(char *curr) {
     time_t t = time(NULL);
     struct tm* info = localtime(&t);
     strftime(curr, TIMELEN, "%H:%M:%S", info);
 }
 
-void logfunc(char *s, FILE *f) {
+void logfunc(char *s, int fd) {
     char curr[TIMELEN];
     getcurrtime(curr);
-    printf("%s - %s\n", curr, s);
-    fprintf(f, "%s - %s\n", curr, s);
+    char buffer[LOGLEN];
+    int len = sprintf(buffer, "%s - %s\n", curr, s);
+    printf("%s\n", buffer);
+    write(fd, buffer, len);
 }
 
-void sync_log(char *s, FILE *f) {
-    pthread_mutex_lock(log_mutex);
-    logfunc(s,f);
-    pthread_mutex_unlock(log_mutex);
+void sync_log(char *s, int fd) {
+	
+    pthread_mutex_lock(&(conf->log_mutex));
+    printf("locking\n");
+    logfunc(s,fd);
+    printf("UNlocking\n");
+    pthread_mutex_unlock(&(conf->log_mutex));
+    
 }

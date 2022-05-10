@@ -29,7 +29,7 @@ void taskmanager()
     }
 
     op = insert;
-    taskQueue = (queuedTask *)malloc(sizeof(queuedTask) * conf->queuePos);
+    taskQueue = (queuedTask *)malloc(sizeof(queuedTask) * conf->queue_pos);
     int fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1)
     {
@@ -99,7 +99,7 @@ void taskmanager()
         if (sscanf(string, "%[^;];%d;%d", tid, &mi, &timeLimit) == 3)
         {
             pthread_mutex_lock(&operation_mutex);
-            while (op != insert || pos == conf->queuePos)
+            while (op != insert || pos == conf->queue_pos)
             {
                 pthread_cond_wait(&operation_cv, &operation_mutex);
             }
@@ -131,6 +131,7 @@ void taskmanager()
 
 void *scheduler()
 { // tempo de chegada + tempo maximo - tempo atual
+	sync_log("scheduler...?", conf->log_file);
     while (1)
     {
 
@@ -142,18 +143,21 @@ void *scheduler()
         for (int i = 0; i < pos; i++)
         {
             taskQueue[i].priority = 1;
-            for (int a = 0; a < pos; a++)
+            
+            for (int j = 0; j < pos; j++)
             {
-                if (taskQueue[i].t.timelimit > taskQueue[a].t.timelimit)
+                if (taskQueue[i].t.timelimit > taskQueue[j].t.timelimit)
                 {
                     taskQueue[i].priority++;
                 }
-                else if (taskQueue[i].t.timelimit == taskQueue[a].t.timelimit && i > a)
+                
+                else if (taskQueue[i].t.timelimit == taskQueue[j].t.timelimit && i > j)
                 {
                     taskQueue[i].priority++;
                 }
             }
         }
+        
         for (int i = 0; i < pos; i++)
         {
             printf("%s - %d\n", taskQueue[i].t.id, taskQueue[i].priority);

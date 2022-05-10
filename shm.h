@@ -19,11 +19,9 @@
 
 typedef struct
 {
-    int queuePos;
-    int maxWait;
-    int num_servers;
-    int flag_servers;
-    FILE *log_file;
+    int queue_pos, max_wait, num_servers, flag_servers, log_file;
+    float percent_filled, wait_time;
+    pthread_mutex_t log_mutex;
 } configs;
 
 typedef struct
@@ -39,9 +37,26 @@ typedef struct
     int performance_lvl;
 } edgeServer;
 
+typedef struct
+{
+    pthread_mutex_t read_mutex;
+    pthread_mutex_t global_mutex;
+    int b;
+} readwrite_lock;
+
+typedef struct {
+    configs c;
+    readwrite_lock l;
+} shm;
+    
 extern void *shm_pointer;
 extern configs *conf;
 extern edgeServer *servers;
-extern pthread_mutex_t *log_mutex;
+extern readwrite_lock *rdwr_lock;
+
+void begin_shm_read();
+void end_shm_read();
+void begin_shm_write();
+void end_shm_write();
 
 #endif // TASK_MANAGER_H

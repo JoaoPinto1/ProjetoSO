@@ -11,17 +11,13 @@
 #include "shm.h"
 
 void maintenance();
-void sync_log(char *s, FILE *f);
 
 void *shm_pointer;
 configs *conf;
 edgeServer *servers;
-pthread_mutex_t *log_mutex;
+readwrite_lock *rdwr_lock;
 
-FILE *l;
-
-int shm_fd;
-pid_t id;
+int shm_fd, l;
 
 int main(int argc, char *argv[])
 {
@@ -30,14 +26,14 @@ int main(int argc, char *argv[])
         printf("Not enough arguments\n");
         exit(-1);
     }
-    l = fopen(LOGFILE, "a");
+    l = open(LOGFILE, O_WRONLY | O_CREAT);
 
     logfunc("OFFLOAD SIMULATOR STARTING", l);
     int queuePos, maxWait, num, offset = 0, i;
     const char *filename = argv[1];
 
     FILE *f = fopen(filename, "r");
-    printf("boas\n");
+    
     if (!f)
     {
         exit(EXIT_FAILURE);
@@ -46,7 +42,7 @@ int main(int argc, char *argv[])
 
     if (num < 2)
     {
-        logfunc("Edge servers insuficientes", conf->log_file);
+        logfunc("Edge servers insuficientes", l);
         exit(EXIT_FAILURE);
     }
     if (mkfifo("TASK_PIPE", O_CREAT | O_EXCL | 0777) == -1)
@@ -57,20 +53,34 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+   	close(l);
+  
     shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    ftruncate(shm_fd, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t));
+    ftruncate(shm_fd, sizeof(shm) + num * sizeof(edgeServer));
 
-    shm_pointer = mmap(0, sizeof(configs) + sizeof(edgeServer) * num + sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
+    shm_pointer = mmap(0, sizeof(shm) + num * sizeof(edgeServer), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
 
     conf = (configs *)shm_pointer;
 
-    conf->maxWait = maxWait;
-    conf->queuePos = queuePos;
-    conf->num_servers = num;
-    conf->log_file = l;
+    conf->max_wait = maxWait;
+    conf->queue_pos = queuePos;
+    conf->num_servers = num; 	
+    conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
     offset += sizeof(configs);
-
+    
+    rdwr_lock = (readwrite_lock *) (shm_pointer + offset);
+    rdwr_lock->b = 0;
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(&(rdwr_lock->read_mutex), &attr);printf("boas\n");
+    pthread_mutex_init(&(conf->log_mutex), &attr);
+    pthread_mutex_init(&(rdwr_lock->global_mutex), &attr);
+    
+    
+    offset += sizeof(readwrite_lock);
     servers = (edgeServer *)(shm_pointer + offset);
+    
     for (i = 0; i < num; i++)
     {
         fscanf(f, " %[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
@@ -83,13 +93,7 @@ int main(int argc, char *argv[])
         }
     }
     fclose(f);
-    offset += num * sizeof(edgeServer);
-
-    log_mutex = (pthread_mutex_t *)(shm_pointer + offset);
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(log_mutex, &attr);
+    
     sync_log("SHARED MEMORY CREATED", conf->log_file);
 
     for (i = 0; i < 3; i++)
@@ -121,8 +125,8 @@ int main(int argc, char *argv[])
         wait(NULL);
     }
     shm_unlink(SHM_NAME);
-    pthread_mutex_destroy(log_mutex);
     sync_log("SIMULATOR CLOSING", conf->log_file);
+    close(conf->log_file);
     return 0;
 }
 
