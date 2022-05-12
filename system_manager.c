@@ -9,8 +9,7 @@
 #include "monitor.h"
 #include "task_manager.h"
 #include "shm.h"
-
-void maintenance();
+#include "maintenance_manager.h"
 
 void *shm_pointer;
 configs *conf;
@@ -49,11 +48,18 @@ int main(int argc, char *argv[])
     {
         if (errno != EEXIST)
         {
-            printf("Could not create named pipe\n");
+            logfunc("Could not create named pipe\n", l);
             return 1;
         }
     }
-   	close(l);
+    
+    if ((msgid = msgget(IPC_PRIVATE, IPC_CREAT | 0666) == -1) {
+    }
+        sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
+        exit(0);
+    }
+   
+    close(l);
   
     shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, sizeof(shm) + num * sizeof(edgeServer));
@@ -64,8 +70,11 @@ int main(int argc, char *argv[])
 
     conf->max_wait = maxWait;
     conf->queue_pos = queuePos;
-    conf->num_servers = num; 	
+    conf->num_servers = num;
+    conf->flag_servers = 1;
+    conf->msgid = msgid;
     conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
+    conf->available_cpus = num;
     offset += sizeof(configs);
     
     rdwr_lock = (readwrite_lock *) (shm_pointer + offset);
@@ -128,9 +137,4 @@ int main(int argc, char *argv[])
     sync_log("SIMULATOR CLOSING", conf->log_file);
     close(conf->log_file);
     return 0;
-}
-
-void maintenance()
-{
-    sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
 }

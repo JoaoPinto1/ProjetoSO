@@ -19,7 +19,7 @@
 
 typedef struct
 {
-    int queue_pos, max_wait, num_servers, flag_servers, log_file;
+    int queue_pos, max_wait, num_servers, flag_servers, log_file, available_cpus, msgid;
     float percent_filled, wait_time;
     pthread_mutex_t log_mutex;
 } configs;

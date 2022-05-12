@@ -4,16 +4,14 @@
 #include "shm.h"
 #include "task.h"
 #include "log.h"
-
+#include "edge_server.h"
 void taskmanager();
 void *scheduler();
 void *dispatcher();
 
 queuedTask *taskQueue;
-               
-sem_t *vcpu_sems;
-void edgeserver(edgeServer server, int i);
-void *workercpu();
+          
+extern sem_t *vcpu_sems;
 void removeTask(int a);
 int **pipes, pos, v;
 

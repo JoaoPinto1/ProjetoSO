@@ -8,7 +8,7 @@ pthread_mutex_t empty_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t operation_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t monitor_cv = PTHREAD_COND_INITIALIZER;
-
+sem_t *vcpu_sems;
 void taskmanager()
 {
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
@@ -40,7 +40,7 @@ void taskmanager()
     {
         if (fork() == 0)
         {
-            edgeserver(servers[i], i);
+            edgeserver(&servers[i], i);
             exit(0);
         }
     }
@@ -93,19 +93,19 @@ void taskmanager()
             sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
             exit(0);
         }
+        
         buffer[len] = '\0';
         strcat(string, buffer);
 
         if (sscanf(string, "%[^;];%d;%d", tid, &mi, &timeLimit) == 3)
         {
             pthread_mutex_lock(&operation_mutex);
-            while (op != insert || pos == conf->queue_pos)
+            while (op == schedule || pos == conf->queue_pos)
             {
                 pthread_cond_wait(&operation_cv, &operation_mutex);
             }
-            op = insert;
-            pthread_cond_broadcast(&operation_cv);
-
+	    op = insert;
+	    pthread_cond_broadcast(&operation_cv);
             strcpy(taskQueue[pos].t.id, tid);
             taskQueue[pos].t.mi = mi;
             taskQueue[pos].t.timelimit = timeLimit;
@@ -119,7 +119,6 @@ void taskmanager()
             pthread_cond_broadcast(&operation_cv);
             pthread_mutex_unlock(&operation_mutex);
         }
-        sleep(1);
     }
 
     for (int i = 0; i < 2; i++)
@@ -131,7 +130,7 @@ void taskmanager()
 
 void *scheduler()
 { // tempo de chegada + tempo maximo - tempo atual
-	sync_log("scheduler...?", conf->log_file);
+	sync_log("scheduler", conf->log_file);
     while (1)
     {
 
@@ -180,53 +179,59 @@ void *dispatcher()
             pthread_cond_wait(&operation_cv, &operation_mutex);
         }
         queuedTask t_aux;
-        for (int i = 0; i < pos; i++)
-        {
-            if (taskQueue[i].priority == 1)
-            {
-                t_aux = taskQueue[i];
+        int i = 0;
+        for (; i < pos && taskQueue[i].priority != 1; i++);
 
-                int aux_tempo = 0, aux_vcpu = 0;
-                for (int j = 0; j < conf->num_servers && aux_vcpu == 0; j++)
+        t_aux = taskQueue[i];
+
+        int aux_tempo = 0, aux_vcpu = 0;
+        begin_shm_read();
+        int num_servers = conf->num_servers;
+        end_shm_read();
+        
+        for (int j = 0; j < num_servers && aux_vcpu == 0; j++)
+        {
+            begin_shm_read();
+            int perf_level = servers[j].performance_lvl;
+            end_shm_read();
+            
+            for (int k = 0; k < perf_level; k++)
+            {
+            	begin_shm_read();
+            	int speed = servers[j].vcpus[k].speed;
+            	end_shm_read();
+            	
+                // tempo_restante = t_max - (t_presente - t_arrive)
+                double t_restante = t_aux.t.timelimit - ((double)(clock() / CLOCKS_PER_SEC) - t_aux.arrive_time);
+                double t_possivel = (double)((t_aux.t.mi / 1000) / speed);
+                int value;
+                sem_getvalue(&vcpu_sems[j * 2 + k], &value);
+                if (t_possivel < t_restante)
                 {
-                    for (int k = 0; k < servers[j].performance_lvl; k++)
+                    aux_tempo++;
+                    if (value == 0)
                     {
-                        // tempo_restante = t_max - (t_presente - t_arrive)
-                        double t_restante = t_aux.t.timelimit - ((double)(clock() / CLOCKS_PER_SEC) - t_aux.arrive_time);
-                        double t_possivel = (double)((t_aux.t.mi / 1000) / servers[j].vcpus[k].speed);
-                        int value;
-                        sem_getvalue(&vcpu_sems[j * 2 + k], &value);
-                        if (t_possivel < t_restante)
-                        {
-                            aux_tempo++;
-                            if (value == 0)
-                            {
-                                aux_vcpu++;
-                                close(pipes[j][0]);
-                                double send = t_possivel;
-                                write(pipes[j][1], &send, sizeof(double));
-                                sem_post(&vcpu_sems[j * 2 + k]);
-                                removeTask(i);
-                                pthread_cond_signal(&monitor_cv);
-                                printf("Enviada task\n");
-                                break;
-                            }
-                        }
+                        aux_vcpu++;
+                        close(pipes[j][0]);
+                        double send = t_possivel;
+                        write(pipes[j][1], &send, sizeof(double));
+                        sem_post(&vcpu_sems[j * 2 + k]);
+                        removeTask(i);
+                        pthread_cond_signal(&monitor_cv);
+                        printf("Enviada task\n");
+                        break;
                     }
                 }
-                if (aux_tempo == 0)
-                {
-                    sync_log("TASK REMOVED DUE TO LACK OF TIME TO EXECUTE", conf->log_file);
-                }
-                else if (aux_vcpu == 0)
-                {
-                    sync_log("NO VCPU AVAILABLE AT THE MOMENT", conf->log_file);
-                }
+            }
+            if (aux_tempo == 0)
+            {
+                sync_log("TASK REMOVED DUE TO LACK OF TIME TO EXECUTE", conf->log_file);
+            }
+            else if (aux_vcpu == 0)
+            {
+                sync_log("NO VCPU AVAILABLE AT THE MOMENT", conf->log_file);
             }
         }
-        op = insert;
-        pthread_cond_broadcast(&operation_cv);
-        pthread_mutex_unlock(&operation_mutex);
     }
     pthread_exit(NULL);
     return NULL;
@@ -238,10 +243,13 @@ void removeTask(int a)
     pos--;
 }
 
-void edgeserver(edgeServer server, int num)
+void edgeserver(edgeServer server, int num, pthread_mutex_t idle_mutex, pthread_cond_t idle_cv)
 {
-    char string[50];
-    snprintf(string, 40, "%s READY", server.name);
+    idle_mutex = PTHREAD_MUTEX_INITIALIZER;
+    idle_cv = PTHREAD_COND_INITIALIZER;
+    int v1, v2;
+    char string[40];
+    snprintf(string, 39, "%s READY", server.name);
     sync_log(string, conf->log_file);
 
     pthread_t threads[2];
@@ -252,7 +260,26 @@ void edgeserver(edgeServer server, int num)
         id[i] = 10 * num + i;
         pthread_create(&threads[i], NULL, workercpu, &id[i]);
     }
-
+    
+    msg m;
+    begin_shm_read();
+    int id = conf->msgid;
+    end_shm_read();
+    float sleeptime;
+    
+    while (1) {
+        msgrcv(id, &m, sizeof(msg) - sizeof(long), num, 0);
+        if (strcmp(m.payload, "MAINT") != 0) {
+            strcpy(m.payload, "NO");
+            msgsnd(id, &m, sizeof(msg) - sizeof(long), 0);
+            continue;
+        }
+        sem_getvalue(&vcpu_sems[num * 2], &v1);
+        sem_getvalue(&vcpu_sems[num * 2 + 1], &v2);
+        while ( v1 != 0 && v2 != 0) {
+            pthread_cond_wait
+    }
+        
     for (int i = 0; i < 2; i++)
     {
         pthread_join(threads[i], NULL);
@@ -275,3 +302,4 @@ void *workercpu(void *ptr)
     pthread_exit(NULL);
     return NULL;
 }
+

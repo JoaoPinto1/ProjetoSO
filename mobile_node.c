@@ -40,7 +40,7 @@ int main(int argc, char* argv[]){
             return 1;
         }	
         printf("enviado: %s\n", string);
-        sleep(intervalo*0.01);
+        sleep(intervalo*0.001);
         string[0] = '\0';
     }
     close(fd);
