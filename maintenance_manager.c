@@ -16,20 +16,20 @@ void maintenance()
         
         printf("woke up\n");
         float sleeptime = ((float)rand()/(float)RAND_MAX) * 4 + 1;
-        strcpy(m.payload, "MAINT")
-        int serv = rand() % n;
+        strcpy(m.payload, "MAINT");
+        long serv = rand() % n + 1;
     	m.msgtype = serv;
+    	printf("sending message to %ld\n", serv - 1);
         msgsnd(id, &m, sizeof(msg) - sizeof(long), 0);
-        
         msgrcv(id, &m, sizeof(msg) - sizeof(long), serv, 0);
-        
         if (strcmp(m.payload, "OK") != 0) 
         {
-            printf("SERVER %d NOT READY FOR MAINTENANCE\n", serv);
+            printf("SERVER %ld NOT READY FOR MAINTENANCE\n", serv - 1);
         }
         
         else 
         {
+            printf("Maintenance for server %ld! schleepin'\n", serv - 1);
             sleep(sleeptime);
             strcpy(m.payload, "READY");
             msgsnd(id, &m, sizeof(msg) - sizeof(long), 0);

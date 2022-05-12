@@ -3,9 +3,9 @@
 #include "shm.h"
 #include "message.h"
 #include "log.h"
-#include "task_manager.h"
+#include "task_shm.h"
 
-void edgeserver(edgeServer server, int i);
+void edgeserver(edgeServer *server, int i, int *p);
 void *workercpu(void *ptr);
 void *workermonitor(void *ptr);
 #endif //EDGE_SERVER_H

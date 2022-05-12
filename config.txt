@@ -1,6 +1,6 @@
 20
 20
 3
-server1,123,100
-server2,1234,1234
-server3,1232,1232
+server1,1,1
+server2,1,1
+server3,1,1

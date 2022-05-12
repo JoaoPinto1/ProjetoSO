@@ -9,27 +9,32 @@ pthread_cond_t vcpu_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t operation_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t monitor_cv = PTHREAD_COND_INITIALIZER;
 sem_t *vcpu_sems;
+int **pipes, pos, v;
+
 void taskmanager()
 {
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
-
-    pipes = (int **)malloc(conf->num_servers * 2 * sizeof(int));
-    for (int i = 0; i < conf->num_servers; i++)
+    begin_shm_read();
+    int num_servers = conf->num_servers, queue_pos = conf->queue_pos;
+    end_shm_read();
+    pipes = (int **)malloc(num_servers * 2 * sizeof(int));
+    
+    for (int i = 0; i < num_servers; i++)
     {
         pipe(pipes[i]);
     }
 
     int task_fd = shm_open("EDGESERVERS", O_CREAT | O_RDWR, 0666);
-    ftruncate(task_fd, conf->num_servers * 2 * sizeof(sem_t));
-    vcpu_sems = (sem_t *)mmap(0, conf->num_servers * 2 * sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, task_fd, 0);
+    ftruncate(task_fd, num_servers * 2 * sizeof(sem_t));
+    vcpu_sems = (sem_t *)mmap(0, num_servers * 2 * sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, task_fd, 0);
 
     for (int i = 0; i < conf->num_servers * 2; i++)
     {
-        sem_init(&vcpu_sems[i], 1, 0);
+        sem_init(&(vcpu_sems[i]), 1, 0);
     }
 
     op = insert;
-    taskQueue = (queuedTask *)malloc(sizeof(queuedTask) * conf->queue_pos);
+    taskQueue = (queuedTask *)malloc(sizeof(queuedTask) * queue_pos);
     int fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1)
     {
@@ -40,7 +45,7 @@ void taskmanager()
     {
         if (fork() == 0)
         {
-            edgeserver(&servers[i], i);
+            edgeserver(&servers[i], i, pipes[i]);
             exit(0);
         }
     }
@@ -80,8 +85,6 @@ void taskmanager()
             exit(0);
         }
         buffer[len] = '\0';
-        strcat(string, buffer);
-        printf("%s %ld\n", string, strlen(string));
         if (strcmp(string, "STATS") == 0)
         {
             sync_log("STATS", conf->log_file);
@@ -156,11 +159,7 @@ void *scheduler()
                 }
             }
         }
-        
-        for (int i = 0; i < pos; i++)
-        {
-            printf("%s - %d\n", taskQueue[i].t.id, taskQueue[i].priority);
-        }
+        printf("prioridades ajustadas\n");
         op = dispatch;
         pthread_cond_broadcast(&operation_cv);
         pthread_mutex_unlock(&operation_mutex);
@@ -184,7 +183,7 @@ void *dispatcher()
 
         t_aux = taskQueue[i];
 
-        int aux_tempo = 0, aux_vcpu = 0;
+        int aux_tempo = 0, aux_vcpu = 0, value;
         begin_shm_read();
         int num_servers = conf->num_servers;
         end_shm_read();
@@ -202,26 +201,27 @@ void *dispatcher()
             	end_shm_read();
             	
                 // tempo_restante = t_max - (t_presente - t_arrive)
-                double t_restante = t_aux.t.timelimit - ((double)(clock() / CLOCKS_PER_SEC) - t_aux.arrive_time);
-                double t_possivel = (double)((t_aux.t.mi / 1000) / speed);
-                int value;
-                sem_getvalue(&vcpu_sems[j * 2 + k], &value);
-                if (t_possivel < t_restante)
+                double remaining = t_aux.t.timelimit - ((double)(clock() / CLOCKS_PER_SEC) - t_aux.arrive_time);
+                double execution = (double)((t_aux.t.mi / 1000) / speed);
+                if (execution < remaining)
                 {
+                    printf("%ld\n", remaining - execution);
                     aux_tempo++;
+                    sem_getvalue(&vcpu_sems[j * 2 + k], &value);
                     if (value == 0)
                     {
                         aux_vcpu++;
                         close(pipes[j][0]);
-                        double send = t_possivel;
+                        double send = remaining;
                         write(pipes[j][1], &send, sizeof(double));
+                        printf("Enviada task %s para VCPU %d do server %d\n", t_aux.t.id, k, j);
                         sem_post(&vcpu_sems[j * 2 + k]);
                         removeTask(i);
                         pthread_cond_signal(&monitor_cv);
-                        printf("Enviada task\n");
                         break;
                     }
                 }
+            }
             }
             if (aux_tempo == 0)
             {
@@ -231,7 +231,9 @@ void *dispatcher()
             {
                 sync_log("NO VCPU AVAILABLE AT THE MOMENT", conf->log_file);
             }
-        }
+        op = insert;
+        pthread_cond_broadcast(&operation_cv);
+        pthread_mutex_unlock(&operation_mutex);
     }
     pthread_exit(NULL);
     return NULL;
@@ -242,7 +244,7 @@ void removeTask(int a)
     taskQueue[a] = taskQueue[pos - 1];
     pos--;
 }
-
+/*
 void edgeserver(edgeServer server, int num, pthread_mutex_t idle_mutex, pthread_cond_t idle_cv)
 {
     idle_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -301,5 +303,5 @@ void *workercpu(void *ptr)
     }
     pthread_exit(NULL);
     return NULL;
-}
+}*/
 

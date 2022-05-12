@@ -17,16 +17,14 @@ void logfunc(char *s, int fd) {
     getcurrtime(curr);
     char buffer[LOGLEN];
     int len = sprintf(buffer, "%s - %s\n", curr, s);
-    printf("%s\n", buffer);
+    printf("%s", buffer);
     write(fd, buffer, len);
 }
 
 void sync_log(char *s, int fd) {
 	
     pthread_mutex_lock(&(conf->log_mutex));
-    printf("locking\n");
     logfunc(s,fd);
-    printf("UNlocking\n");
     pthread_mutex_unlock(&(conf->log_mutex));
     
 }

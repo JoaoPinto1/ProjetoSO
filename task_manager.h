@@ -5,15 +5,14 @@
 #include "task.h"
 #include "log.h"
 #include "edge_server.h"
+#include "task_shm.h"
 void taskmanager();
 void *scheduler();
 void *dispatcher();
 
 queuedTask *taskQueue;
           
-extern sem_t *vcpu_sems;
 void removeTask(int a);
-int **pipes, pos, v;
 
 enum operation
 {

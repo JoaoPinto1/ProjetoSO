@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/msg.h>
 #include <fcntl.h>
 #define SHM_NAME "SHM"
 
@@ -21,7 +22,8 @@ typedef struct
 {
     int queue_pos, max_wait, num_servers, flag_servers, log_file, available_cpus, msgid;
     float percent_filled, wait_time;
-    pthread_mutex_t log_mutex;
+    pthread_mutex_t log_mutex, monitor_mutex, flag_mutex;
+    pthread_cond_t monitor_cv, flag_cv;
 } configs;
 
 typedef struct

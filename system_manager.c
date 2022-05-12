@@ -16,7 +16,7 @@ configs *conf;
 edgeServer *servers;
 readwrite_lock *rdwr_lock;
 
-int shm_fd, l;
+int shm_fd, l, msgid;
 
 int main(int argc, char *argv[])
 {
@@ -53,8 +53,8 @@ int main(int argc, char *argv[])
         }
     }
     
-    if ((msgid = msgget(IPC_PRIVATE, IPC_CREAT | 0666) == -1) {
-    }
+    if ((msgid = msgget(IPC_PRIVATE, IPC_CREAT | 0666)) == -1)
+    {
         sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
         exit(0);
     }
