@@ -1,6 +1,7 @@
 #ifndef EDGE_SERVER_H
 #define EDGE_SERVER_H
 #include "shm.h"
+#include "task.h"
 #include "message.h"
 #include "log.h"
 #include "task_shm.h"

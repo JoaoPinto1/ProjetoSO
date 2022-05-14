@@ -9,8 +9,6 @@
 void taskmanager();
 void *scheduler();
 void *dispatcher();
-
-queuedTask *taskQueue;
           
 void removeTask(int a);
 
@@ -20,5 +18,12 @@ enum operation
     schedule,
     dispatch
 } op;
+
+queuedTask *taskQueue;
+
+int timespec_cmp(struct timespec t1, struct timespec t2);
+void timespec_subtraction(struct timespec t1, struct timespec t2, struct timespec *t3);
+void double_to_timespec(double d, struct timespec *t);
+double timespec_to_double(struct timespec t);
 
 #endif //TASK_MANAGER_H

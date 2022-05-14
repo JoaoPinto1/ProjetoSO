@@ -20,21 +20,23 @@ int main(int argc, char* argv[]){
         printf("Argumentos inválidos");
         return 1;
     }
+    
     long numpedidos = strtol(argv[1], NULL, 10);
     long intervalo = strtol(argv[2],NULL, 10);
     long instrucoes = strtol(argv[3],NULL,10);
     long tempomax = strtol(argv[4], NULL, 10);
 
-    int fd = open("TASK_PIPE", O_WRONLY);
+    int fd = open("TASK_PIPE", O_WRONLY);printf("trying\n");
     if(fd == -1){
         printf("Named Pipe não encontrado\n");
         return 1;
     }
     char string[SIZETASK];
     for(int i = 0; i < numpedidos; i++){
-        snprintf(string,SIZETASK,"%d-%d;%ld;%ld",getpid(),i,instrucoes,tempomax);
-        int to_write = strlen(string);
-	
+        
+        int printed = snprintf(string, SIZETASK, "%d-%d;%ld;%ld", getpid(), i, instrucoes, tempomax);
+        for (int j = printed + 1; j < SIZETASK - 2; j++) strcat(string, ";");
+        
         if (write(fd, string, SIZETASK) == -1){
             printf("Erro escrever no named pipe\n");
             return 1;

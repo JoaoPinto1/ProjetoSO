@@ -16,6 +16,9 @@
 #include <sys/mman.h>
 #include <sys/msg.h>
 #include <fcntl.h>
+#include <time.h>
+#include <stdbool.h>
+#include <math.h>
 #define SHM_NAME "SHM"
 
 typedef struct

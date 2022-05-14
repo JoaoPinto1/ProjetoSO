@@ -29,7 +29,6 @@ void edgeserver(edgeServer *server, int num, int *p)
     begin_shm_read();
     int msgid = conf->msgid;
     end_shm_read();
-    float sleeptime;
     
     while (1) {
         msgrcv(msgid, &m, sizeof(msg) - sizeof(long), (long)(num + 1), 0);
@@ -46,14 +45,29 @@ void edgeserver(edgeServer *server, int num, int *p)
         }
         pthread_mutex_unlock(&idle_mutex);
         strcpy(m.payload, "OK");
+        
+        pthread_mutex_lock(&(tm_shm->mutex));
+        
         begin_shm_write();
 	server->performance_lvl = 0;
+	conf->available_cpus -= curr_level;
 	end_shm_write();
+	
+	pthread_cond_broadcast(&(tm_shm->cv));
+	pthread_mutex_unlock(&(tm_shm->mutex));
+	
+	
 	printf("sending to MM: %s\n", m.payload);
 	msgsnd(msgid, &m, sizeof(msg) - sizeof(long), 0);
 	msgrcv(msgid, &m, sizeof(msg) - sizeof(long), (long)(num + 1), 0);
+	
+	pthread_mutex_lock(&(tm_shm->mutex));
 	begin_shm_write();
 	server->performance_lvl = curr_level;
+	conf->available_cpus += curr_level;
+	
+	pthread_cond_broadcast(&(tm_shm->cv));
+	pthread_mutex_unlock(&(tm_shm->mutex));
 	end_shm_write();
     }
         
@@ -67,31 +81,46 @@ void *workercpu(void *ptr)
 {
     int numserver = *(int *)ptr / 10;
     int numcpu = *(int *)ptr % 10;
-    int v;
+    int v, len;
+    char received[DISPATCHEDSIZE], id[DISPATCHEDSIZE] = "", gosleep[DISPATCHEDSIZE] = "";
     idling++;
     while (1)
     {
-        sem_wait(&vcpu_sems[numserver * 2 + numcpu]);
+        sem_wait(&vcpu_sems[numserver * 2 + numcpu]); printf("acordeiiii\n");
         sem_post(&vcpu_sems[numserver * 2 + numcpu]);
-        printf("acordeiiiii %d-%d\n", numserver, numcpu);
+       
         pthread_mutex_lock(&idle_mutex);
         idling--;
         pthread_cond_signal(&idle_cv);
         pthread_mutex_unlock(&idle_mutex);
        
-        sem_getvalue(&vcpu_sems[numserver * 2 + numcpu], &v);
-        printf("%d\n", v);
-        float gosleep;
+
         close(pipes[1]);
-        read(pipes[0], &gosleep, sizeof(float));
-        printf("Server %d - VCPU %d: recebi task vou dormir: %f\n", numserver, numcpu, gosleep);
-        sleep(gosleep);
-        printf("Server %d - VCPU %d: dormi\n", numserver, numcpu);
+        if ((len = read(pipes[0], received, DISPATCHEDSIZE)) == -1)
+        {
+            sync_log("ERROR READING FROM TASK_PIPE", conf->log_file);
+            exit(0);
+        }
+        received[len] = '\0';
+        if (sscanf(received, "%[^;];%[^;]", id, gosleep) == 2) 
+        {
+            double sleeptime = strtod(gosleep, NULL);
+            printf("Server %d - VCPU %d: recebi task %s vou dormir: %f\n", numserver, numcpu, id, sleeptime);
+            sleep(sleeptime);
+            printf("Server %d - VCPU %d: done!\n", numserver, numcpu);
+        }
         pthread_mutex_lock(&idle_mutex);
         idling++;
         pthread_cond_signal(&idle_cv);
         pthread_mutex_unlock(&idle_mutex);
         printf("%d\n", idling);
+        pthread_mutex_lock(&(tm_shm->mutex));
+        begin_shm_write();
+        conf->available_cpus++;
+        printf("available_cpus: %d\n", conf->available_cpus);
+        end_shm_write();
+        pthread_cond_signal(&(tm_shm->cv));
+        pthread_mutex_unlock(&(tm_shm->mutex));
         sem_trywait(&vcpu_sems[numserver * 2 + numcpu]);
     }
     pthread_exit(NULL);

@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
     ftruncate(shm_fd, sizeof(shm) + num * sizeof(edgeServer));
 
     shm_pointer = mmap(0, sizeof(shm) + num * sizeof(edgeServer), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, offset);
-
-    conf = (configs *)shm_pointer;
+    shm *shm_struct = (shm *) shm_pointer;
+    conf = &(shm_struct->c);
 
     conf->max_wait = maxWait;
     conf->queue_pos = queuePos;
@@ -75,19 +75,22 @@ int main(int argc, char *argv[])
     conf->msgid = msgid;
     conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
     conf->available_cpus = num;
-    offset += sizeof(configs);
     
-    rdwr_lock = (readwrite_lock *) (shm_pointer + offset);
+    rdwr_lock = &(shm_struct->l);
     rdwr_lock->b = 0;
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(&(rdwr_lock->read_mutex), &attr);printf("boas\n");
+    
+    pthread_condattr_t attr_cv;
+    pthread_condattr_init(&attr_cv);
+    pthread_condattr_setpshared(&attr_cv, PTHREAD_PROCESS_SHARED);
+    
+    pthread_mutex_init(&(rdwr_lock->read_mutex), &attr);
     pthread_mutex_init(&(conf->log_mutex), &attr);
     pthread_mutex_init(&(rdwr_lock->global_mutex), &attr);
     
-    
-    offset += sizeof(readwrite_lock);
+    offset += sizeof(shm);
     servers = (edgeServer *)(shm_pointer + offset);
     
     for (i = 0; i < num; i++)

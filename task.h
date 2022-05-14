@@ -6,8 +6,10 @@
 
 #ifndef TASK_H
 #define TASK_H
-#define SIZETASK 30
-
+#include <time.h>
+#include <unistd.h>
+#define SIZETASK 25
+#define DISPATCHEDSIZE 20
 typedef struct {
     char id[SIZETASK];
     int mi;
@@ -17,8 +19,8 @@ typedef struct {
 
 typedef struct{
     task t;
-    float arrive_time;
     int priority;
+    struct timespec arrive_time;
 } queuedTask;
 
 #endif //TASK_H
