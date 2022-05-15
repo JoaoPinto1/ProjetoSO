@@ -1,6 +1,7 @@
 #include "edge_server.h"
-pthread_mutex_t idle_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t idle_cv = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t idle_mutex = PTHREAD_MUTEX_INITIALIZER, maint_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t idle_cv = PTHREAD_COND_INITIALIZER, maint_cv = PTHREAD_COND_INITIALIZER;
+
 int idling, curr_level, pipes[2];
 
 void edgeserver(edgeServer *server, int num, int *p)
@@ -70,6 +71,9 @@ void edgeserver(edgeServer *server, int num, int *p)
 	end_shm_write();
 	pthread_cond_broadcast(&(tm_shm->cv));
 	pthread_mutex_unlock(&(tm_shm->mutex));
+	pthread_mutex_lock(&maint_mutex);
+	pthread_cond_signal(&maint_cv);
+	pthread_mutex_unlock(&maint_mutex);
     }
         
     for (i = 0; i < 3; i++)
@@ -130,5 +134,33 @@ void *workercpu(void *ptr)
 
 void *workermonitor(void *ptr) 
 {
-    
+	int numserver = *(int *)ptr;
+	int flag, curr_flag, performance_level;
+    while(1){
+    	begin_shm_read();
+    	curr_flag = conf->flag_servers;
+    	flag = conf->flag_servers;
+    	end_shm_read();
+    	pthread_mutex_lock(flag_mutex);
+    	while(flag == curr_flag){
+    		pthread_cond_wait(flag_cv,flag_mutex);
+    		begin_shm_read();
+    		performance_level = servers[numserver].performance_lvl;
+    		flag = conf->flag_servers;
+    		end_shm_read();
+    	}
+    	printf("MUDOU ALGUMA MERDA\n");
+    	pthread_mutex_lock(&maint_mutex);
+    	while (performance_level == 0){
+    		pthread_cond_wait(&maint_cv, &maint_mutex);
+    	}
+    	begin_shm_write();
+    	pthread_mutex_lock(&(tm_shm->mutex));
+    	servers[numserver].performance_lvl = flag;
+    	conf->available_cpus += (flag-curr_flag);
+    	printf("available cpus monitor: %d\n",servers[numserver].performance_lvl);
+    	pthread_cond_signal(&(tm_shm->cv));
+        pthread_mutex_unlock(&(tm_shm->mutex));
+    	end_shm_write();
+    }
 }

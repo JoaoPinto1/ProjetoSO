@@ -87,6 +87,10 @@ int main(int argc, char *argv[])
     conf->wait_time = 0;
     conf->removed_count = 0;
     conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
+    monitor_mutex = &(conf->monitor_mutex);
+    monitor_cv = &(conf->monitor_cv);
+    flag_mutex = &(conf->flag_mutex);
+    flag_cv = &(conf->flag_cv);
     
     rdwr_lock = &(shm_struct->l);
     rdwr_lock->b = 0;
@@ -101,6 +105,10 @@ int main(int argc, char *argv[])
     pthread_mutex_init(&(rdwr_lock->read_mutex), &attr);
     pthread_mutex_init(&(conf->log_mutex), &attr);
     pthread_mutex_init(&(rdwr_lock->global_mutex), &attr);
+    pthread_mutex_init(monitor_mutex,&attr);
+    pthread_cond_init(monitor_cv,&attr_cv);
+    pthread_mutex_init(flag_mutex,&attr);
+    pthread_cond_init(flag_cv,&attr_cv);
     
     offset += sizeof(shm);
     servers = (edgeServer *)(shm_pointer + offset);
@@ -109,13 +117,13 @@ int main(int argc, char *argv[])
     {
         fscanf(f, " %[^,],%d,%d", servers[i].name, &(servers[i].vcpus[0].speed), &(servers[i].vcpus[1].speed));
         servers[i].performance_lvl = 1;
+        servers[i].executed_count = 0;
+        servers[i].maintenance_count = 0;
         if (servers[i].vcpus[0].speed < servers[i].vcpus[1].speed)
         {
             int aux = servers[i].vcpus[0].speed;
             servers[i].vcpus[0].speed = servers[i].vcpus[1].speed;
             servers[i].vcpus[1].speed = aux;
-            servers[i].executed_count = 0;
-            servers[i].maintenance_count = 0;
         }
     }
     fclose(f);
@@ -123,24 +131,29 @@ int main(int argc, char *argv[])
     sync_log("SHARED MEMORY CREATED", conf->log_file);
 
     if (fork() == 0) {
+    	signal(SIGTSTP, SIG_IGN);
         printf("%d\n", getpid());
         monitor();
         exit(0);
     }
     
     if (fork() == 0) {
+    	signal(SIGTSTP, SIG_IGN);
         printf("%d\n", getpid());
         maintenance();
         exit(0);
     }
     
     if (fork() == 0) {
+    	signal(SIGTSTP, SIG_IGN);
         printf("%d\n", getpid());
         taskmanager();
         exit(0);
     }
-    printf("fucking oi?\n");
-    signal(SIGTSTP, stats);
+    struct sigaction sa;
+    sa.sa_handler = &stats;
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGTSTP, &sa, NULL);
     for (i = 0; i < 3; i++)
     {
         wait(NULL);
