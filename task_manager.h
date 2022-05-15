@@ -9,7 +9,7 @@
 void taskmanager();
 void *scheduler();
 void *dispatcher();
-          
+void sigint_task();
 void removeTask(int a);
 
 enum operation

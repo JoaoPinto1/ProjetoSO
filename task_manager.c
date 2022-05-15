@@ -1,10 +1,8 @@
 #include "task_manager.h"
 pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t empty_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t *vcpu_mutex;
 
 pthread_cond_t operation_cv = PTHREAD_COND_INITIALIZER;
-pthread_cond_t empty_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t *vcpu_cv;
 char logstring[128];
 sem_t *vcpu_sems;
@@ -13,12 +11,14 @@ int task_fd;
 taskmanager_shm *tm_shm;
 int num_servers, queue_pos;
 bool waiting;
+pthread_t threads[2];
+int fd;
 
 void int_timespec_subtraction(int sec, struct timespec t1, struct timespec *t2);
 void taskmanager()
 {
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
-
+	signal(SIGINT,sigint_task);
     begin_shm_read();
     num_servers = conf->num_servers;
     queue_pos = conf->queue_pos;
@@ -27,7 +27,7 @@ void taskmanager()
 
     taskQueue = (queuedTask *)malloc(queue_pos * sizeof(queuedTask));
 
-    task_fd = shm_open("EDGESERVERS", O_CREAT | O_RDWR, 0666);
+    task_fd = shm_open(TASK_SHMNAME, O_CREAT | O_RDWR, 0666);
     ftruncate(task_fd, sizeof(taskmanager_shm) + num_servers * 2 * sizeof(sem_t));
     void *shm_pointer = mmap(0, sizeof(taskmanager_shm) + num_servers * 2 * sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, task_fd, 0);
     tm_shm = (taskmanager_shm *)shm_pointer;
@@ -62,7 +62,7 @@ void taskmanager()
     {
         printf("%d %d\n", pipes[i][0], pipes[i][1]);
     }
-    int fd = open("TASK_PIPE", O_RDWR);
+    fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1)
     {
         sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
@@ -79,7 +79,6 @@ void taskmanager()
     }
 
     int id[2];
-    pthread_t threads[2];
     id[0] = 0;
     pthread_create(&threads[0], NULL, scheduler, &id[0]);
     id[1] = 1;
@@ -105,6 +104,7 @@ void taskmanager()
 		printf("%s\n",string);
         if (strcmp(string, "EXIT") == 0)
         {
+        	read(fd, buffer, 1);
             sync_log("EXIT", conf->log_file);
             break;
         }
@@ -118,6 +118,7 @@ void taskmanager()
         printf("%s\n",string);
         if (strcmp(string, "STATS") == 0)
         {
+        	read(fd, buffer, 1);
             stats();
             continue;
         }
@@ -390,6 +391,28 @@ void *dispatcher()
     }
     pthread_exit(NULL);
     return NULL;
+}
+
+void sigint_task(){
+	printf("ADEUS TASK\n");
+/*
+	sync_log("SIMULATOR WAITING FOR LAST TASKS TO FINISH",conf->log_file);
+	operation_cv.__data.__wrefs = 0;
+	pthread_mutex_destroy(&operation_mutex);
+	pthread_cond_destroy(&operation_cv);
+	for (int i = 0;i < num_servers*2; i++){
+		sem_destroy(&(vcpu_sems[i]));
+	}
+	tm_shm->cv.__data.__wrefs = 0;
+	pthread_mutex_destroy(&(tm_shm->mutex));
+	pthread_cond_destroy(&(tm_shm->cv));
+	pthread_cancel(threads[0]);
+	pthread_cancel(threads[1]);
+	close(fd);
+	munmap(0,sizeof(taskmanager_shm) + num_servers * 2 * sizeof(sem_t));
+	shm_unlink(TASK_SHMNAME);
+	exit(0);
+	*/
 }
 
 void removeTask(int a)

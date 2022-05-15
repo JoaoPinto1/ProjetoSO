@@ -3,9 +3,11 @@ pthread_mutex_t idle_mutex = PTHREAD_MUTEX_INITIALIZER, maint_mutex = PTHREAD_MU
 pthread_cond_t idle_cv = PTHREAD_COND_INITIALIZER, maint_cv = PTHREAD_COND_INITIALIZER;
 
 int idling, curr_level, pipes[2];
-
+pthread_t threads[3];
+void sigint_edgeServer();
 void edgeserver(edgeServer *server, int num, int *p)
 {
+	signal(SIGINT,sigint_edgeServer);
     char string[40];
     snprintf(string, 39, "%s READY", server->name);
     sync_log(string, conf->log_file);
@@ -16,7 +18,7 @@ void edgeserver(edgeServer *server, int num, int *p)
     begin_shm_read();
     curr_level = server->performance_lvl;
     end_shm_read();
-    pthread_t threads[3];
+    
     int id[2];
     int i = 0;
     for (; i < 2; i++)
@@ -86,7 +88,7 @@ void *workercpu(void *ptr)
 {
     int numserver = *(int *)ptr / 10;
     int numcpu = *(int *)ptr % 10;
-    int v, len;
+    int len;
     char received[DISPATCHEDSIZE], id[DISPATCHEDSIZE] = "", gosleep[DISPATCHEDSIZE] = "";
     idling++;
     while (1)
@@ -149,11 +151,13 @@ void *workermonitor(void *ptr)
     		flag = conf->flag_servers;
     		end_shm_read();
     	}
+    	pthread_mutex_unlock(flag_mutex);
     	printf("MUDOU ALGUMA MERDA\n");
     	pthread_mutex_lock(&maint_mutex);
     	while (performance_level == 0){
     		pthread_cond_wait(&maint_cv, &maint_mutex);
     	}
+    	pthread_mutex_unlock(&maint_mutex);
     	begin_shm_write();
     	pthread_mutex_lock(&(tm_shm->mutex));
     	servers[numserver].performance_lvl = flag;
@@ -163,4 +167,22 @@ void *workermonitor(void *ptr)
         pthread_mutex_unlock(&(tm_shm->mutex));
     	end_shm_write();
     }
+}
+
+void sigint_edgeServer(){
+	printf("ADEUS EDGE SERVER\n");
+/*
+	pthread_mutex_lock(&idle_mutex);
+	while(idling != 2){
+		pthread_cond_wait(&idle_cv,&idle_mutex);
+	}
+	pthread_mutex_unlock(&idle_mutex);
+	pthread_mutex_destroy(&idle_mutex);
+	pthread_cond_destroy(&idle_cv);
+	pthread_mutex_destroy(&maint_mutex);
+	pthread_cond_destroy(&maint_cv);
+	for(int i = 0; i<3 ; i++){
+		pthread_cancel(threads[i]);
+	}
+	*/
 }

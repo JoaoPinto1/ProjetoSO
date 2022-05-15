@@ -20,7 +20,7 @@ pthread_mutex_t *flag_mutex;
 pthread_cond_t *monitor_cv;
 pthread_cond_t *flag_cv;
 
-int shm_fd, l, msgid;
+int shm_fd, l, msgid, num;
 
 int main(int argc, char *argv[])
 {
@@ -32,7 +32,13 @@ int main(int argc, char *argv[])
     l = open(LOGFILE, O_WRONLY | O_CREAT);
 
     logfunc("OFFLOAD SIMULATOR STARTING", l);
-    int queuePos, maxWait, num, offset = 0, i;
+    
+    sigset_t set;
+    sigfillset(&set);
+    sigdelset(&set, SIGINT);
+    sigdelset(&set,SIGTSTP);
+    sigprocmask(SIG_BLOCK,&set,NULL);
+    int queuePos, maxWait, offset = 0, i;
     const char *filename = argv[1];
 
     FILE *f = fopen(filename, "r");
@@ -162,4 +168,29 @@ int main(int argc, char *argv[])
     sync_log("SIMULATOR CLOSING", conf->log_file);
     close(conf->log_file);
     return 0;
+}
+
+void sigint(){
+	printf("ADEUS SYSTEM\n");
+/*
+	sync_log("SIGNAL SIGINT RECIEVED", conf->log_file);
+	for (int i = 0; i < 3; i++)
+    {
+        wait(NULL);
+    }
+	monitor_cv->__data.__wrefs = 0;
+	flag_cv->__data.__wrefs = 0;
+    pthread_mutex_destroy(&(rdwr_lock->read_mutex));
+    pthread_mutex_destroy(&(conf->log_mutex));
+    pthread_mutex_destroy(&(rdwr_lock->global_mutex));
+    pthread_mutex_destroy(monitor_mutex);
+    pthread_cond_destroy(monitor_cv);
+    pthread_mutex_destroy(flag_mutex);
+    pthread_cond_destroy(flag_cv);
+	munmap(0, sizeof(shm) + num * sizeof(edgeServer));
+	shm_unlink(SHM_NAME);
+	sync_log("SIMULATOR CLOSING", conf->log_file);
+	close(conf->log_file);
+	pthread_mutex_destroy(&(conf->log_mutex));
+	*/
 }

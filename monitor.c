@@ -1,11 +1,11 @@
 #include "shm.h"
-
+void sigint_monitor();
 
 void monitor()
 {
+
 	sync_log("PROCESS MONITOR CREATED", conf->log_file);
-	// por omissão os edge servers irão estar em normal performance com apenas um vcpu ativo
-	
+	signal(SIGINT,sigint_monitor);
 	while (1)
 	{
 		pthread_mutex_lock(monitor_mutex);
@@ -30,4 +30,11 @@ void monitor()
 		pthread_mutex_unlock(monitor_mutex);
 	}
 	
+}
+
+void sigint_monitor(){
+	printf("ADEUS MONITOR\n");
+/*
+	exit(0);
+*/
 }
