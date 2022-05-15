@@ -27,7 +27,7 @@ void edgeserver(edgeServer *server, int num, int *p)
     pthread_create(&threads[i], NULL, workermonitor, &num);
     msg m;
     begin_shm_read();
-    int msgid = conf->msgid;
+    int msgid = conf->msg_id;
     end_shm_read();
     
     while (1) {
@@ -65,10 +65,11 @@ void edgeserver(edgeServer *server, int num, int *p)
 	begin_shm_write();
 	server->performance_lvl = curr_level;
 	conf->available_cpus += curr_level;
-	
+	servers[num].maintenance_count++;
+	printf("%d\n", servers[num].maintenance_count);
+	end_shm_write();
 	pthread_cond_broadcast(&(tm_shm->cv));
 	pthread_mutex_unlock(&(tm_shm->mutex));
-	end_shm_write();
     }
         
     for (i = 0; i < 3; i++)

@@ -6,7 +6,7 @@ void maintenance()
     
     sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
     begin_shm_read();
-    int id = conf->msgid, n = conf->num_servers;
+    int id = conf->msg_id, n = conf->num_servers;
     end_shm_read();
     msg m;
     while (1) 

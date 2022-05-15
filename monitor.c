@@ -1,6 +1,5 @@
 #include "monitor.h"
 
-pthread_mutex_t monitor_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void monitor()
 {

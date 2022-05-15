@@ -19,11 +19,13 @@
 #include <time.h>
 #include <stdbool.h>
 #include <math.h>
+#include "log.h"
 #define SHM_NAME "SHM"
+#define LOGLEN 128
 
 typedef struct
 {
-    int queue_pos, max_wait, num_servers, flag_servers, log_file, available_cpus, msgid;
+    int queue_pos, max_wait, num_servers, flag_servers, msg_id, available_cpus, task_count, removed_count, log_file;
     float percent_filled, wait_time;
     pthread_mutex_t log_mutex, monitor_mutex, flag_mutex;
     pthread_cond_t monitor_cv, flag_cv;
@@ -39,7 +41,8 @@ typedef struct
 {
     char name[32];
     vcpu vcpus[2];
-    int performance_lvl;
+    int performance_lvl, executed_count, maintenance_count;
+    
 } edgeServer;
 
 typedef struct
@@ -58,10 +61,13 @@ extern void *shm_pointer;
 extern configs *conf;
 extern edgeServer *servers;
 extern readwrite_lock *rdwr_lock;
-
+extern pthread_mutex_t *monitor_mutex;
+extern pthread_mutex_t *flag_mutex;
+extern pthread_cond_t *monitor_cv;
+extern pthread_cond_t *flag_cv;
 void begin_shm_read();
 void end_shm_read();
 void begin_shm_write();
 void end_shm_write();
-
+void stats();
 #endif // TASK_MANAGER_H

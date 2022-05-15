@@ -7,15 +7,15 @@ pthread_mutex_t *vcpu_mutex;
 pthread_cond_t operation_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t empty_cv = PTHREAD_COND_INITIALIZER;
 pthread_cond_t *vcpu_cv;
-
+char logstring[128];
 sem_t *vcpu_sems;
 int **pipes, pos, v;
 int task_fd;
 taskmanager_shm *tm_shm;
 int num_servers, queue_pos;
-char logstring[LOGLEN];
 bool waiting;
 
+void int_timespec_subtraction(int sec, struct timespec t1, struct timespec *t2);
 void taskmanager()
 {
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
@@ -72,7 +72,6 @@ void taskmanager()
     {
         if (fork() == 0)
         {
-            printf("boas\n");
             edgeserver(&servers[i], i, pipes[i]);
             exit(0);
         }
@@ -149,7 +148,7 @@ void taskmanager()
             snprintf(logstring, LOGLEN, "TASK INSERIDA NA FILA: %s«\n", taskQueue[pos].t.id);
             sync_log(logstring, conf->log_file);
             pos++;
-            printf("pos: %d\n", 1);
+            printf("pos: %d\n", pos);
             op = schedule;
             pthread_cond_broadcast(&operation_cv);
             printf("inserter unlocking operation\n");
@@ -176,20 +175,50 @@ void *scheduler()
             printf("scheduler waiting for operation_cv\n");
             pthread_cond_wait(&operation_cv, &operation_mutex);
         }
-        printf("bamos scheduler\n");
+        struct timespec current_time, elapsed_time_i, remaining_time_i,
+               elapsed_time_j, remaining_time_j;
+              
         for (int i = 0; i < pos; i++)
         {
             taskQueue[i].priority = 1;
+            clock_gettime(CLOCK_REALTIME, &current_time);
+            timespec_subtraction(current_time, taskQueue[i].arrive_time, &elapsed_time_i);
+            int_timespec_subtraction(taskQueue[i].t.timelimit, elapsed_time_i, &remaining_time_i);
             
+            if (timespec_to_double(remaining_time_i) < 0) 
+            {
+                sync_log("TASK REMOVED\n", conf->log_file);
+                removeTask(i);
+                begin_shm_write();
+                conf->removed_count++;
+                end_shm_write();
+                i--;
+                continue;
+            }
             for (int j = 0; j < pos; j++)
             {
+                if (i == j) continue;
                 
-                if (taskQueue[i].t.timelimit > taskQueue[j].t.timelimit)
+                clock_gettime(CLOCK_REALTIME, &current_time);
+                timespec_subtraction(current_time, taskQueue[j].arrive_time, &elapsed_time_j);
+                int_timespec_subtraction(taskQueue[i].t.timelimit, elapsed_time_j, &remaining_time_j);
+                
+                if (timespec_to_double(remaining_time_j) < 0) 
                 {
+                    sync_log("TASK REMOVED\n", conf->log_file);
+                    removeTask(j);
+                    begin_shm_write();
+                    conf->removed_count++;
+                    end_shm_write();
+                    j--;
+                    continue;
+                }
+                if (timespec_cmp(remaining_time_i, remaining_time_j) > 0)
+                {	
                     taskQueue[i].priority++;
                 }
                 
-                else if (taskQueue[i].t.timelimit == taskQueue[j].t.timelimit && i > j)
+                else if (timespec_cmp(remaining_time_i, remaining_time_j) == 0 && i > j)
                 {
                     taskQueue[i].priority++;
                 }
@@ -294,18 +323,14 @@ void *dispatcher()
             	char *name = servers[j].name;
             	end_shm_read();
             	
-                // tempo_restante = t_max - (t_presente - t_arrive)
+
                 clock_gettime(CLOCK_REALTIME, &current_time);
                 timespec_subtraction(current_time, task.arrive_time, &elapsed_time);
-                remaining_time.tv_sec = task.t.timelimit - elapsed_time.tv_sec - 1;
-                remaining_time.tv_nsec = 1000000000 - elapsed_time.tv_nsec;
-                printf("remaining: %ld %ld\n", remaining_time.tv_sec, remaining_time.tv_nsec);
-                //timespec_subtraction(task.t.timelimit, elapsed_time, &remaining_time);
+                int_timespec_subtraction(task.t.timelimit, elapsed_time, &remaining_time);
 
                 double exec = ((double)(task.t.mi / 1000) / (double)speed);
                 double_to_timespec(exec, &execution_time);
-                printf("execution:%ld %ld\n", execution_time.tv_sec, execution_time.tv_nsec);
-                printf("%d, %d %d\n",timespec_cmp(execution_time, remaining_time), j, k);
+                
                 if (timespec_cmp(execution_time, remaining_time) < 0)
                 {
                     aux_tempo++;
@@ -322,6 +347,9 @@ void *dispatcher()
                         write(pipes[j][1], &send, DISPATCHEDSIZE);
                         begin_shm_write();
                         conf->available_cpus--;
+                        conf->task_count++;
+                        servers[j].executed_count++;
+                        conf->wait_time += timespec_to_double(elapsed_time);
                         end_shm_write();
                         sync_log(logstring, conf->log_file);
                         sem_post(&vcpu_sems[j * 2 + k]);
@@ -329,14 +357,17 @@ void *dispatcher()
                         break;
                     }
                 }
+                if (aux_vcpu > 0) break;
             }
             if (aux_vcpu > 0) break;
-            printf("available-vcpus from inside the loop: %d\n", conf->available_cpus);
         }
-        if (aux_tempo == 0)
+        if (aux_vcpu == 0)
         {
             sync_log("TASK REMOVED DUE TO LACK OF TIME TO EXECUTE", conf->log_file);
             removeTask(i);
+            begin_shm_write();
+            conf->removed_count++;
+            end_shm_write();
         }
         pthread_mutex_unlock(&operation_mutex);
         printf("dispatcher unlocking operation\n");
@@ -386,14 +417,10 @@ void timespec_subtraction(struct timespec t1, struct timespec t2, struct timespe
     }
 }
 
-void nanossecond_subtraction(struct timespec t1, double nsec, struct timespec *t2)
+void int_timespec_subtraction(int sec, struct timespec t1, struct timespec *t2)
 {
-    t2->tv_nsec = t1.tv_nsec - nsec;
-    
-    if (t2->tv_nsec < 0) {
-        t2->tv_nsec += 1000000000;
-        t2->tv_sec--;
-    }
+    t2->tv_sec = sec - t1.tv_sec - 1;
+    t2->tv_nsec = 1000000000 - t1.tv_nsec;
 }
 
 void double_to_timespec(double d, struct timespec *t)

@@ -12,7 +12,7 @@
 #include "shm.h"
 #define LOGFILE "log.txt"
 #define TIMELEN 9
-#define LOGLEN 128
+
 void getcurrtime(char *);
 void logfunc(char *s,int fd);
 void sync_log(char *s, int fd);

@@ -15,6 +15,10 @@ void *shm_pointer;
 configs *conf;
 edgeServer *servers;
 readwrite_lock *rdwr_lock;
+pthread_mutex_t *monitor_mutex;
+pthread_mutex_t *flag_mutex;
+pthread_cond_t *monitor_cv;
+pthread_cond_t *flag_cv;
 
 int shm_fd, l, msgid;
 
@@ -69,12 +73,20 @@ int main(int argc, char *argv[])
     conf = &(shm_struct->c);
 
     conf->max_wait = maxWait;
+    
     conf->queue_pos = queuePos;
     conf->num_servers = num;
+    printf("%d %d %d\n", conf->max_wait, conf->queue_pos, conf->num_servers);
     conf->flag_servers = 1;
-    conf->msgid = msgid;
-    conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
+    conf->percent_filled = 0;
+    conf->task_count = 0;
+    conf->wait_time = 0;
     conf->available_cpus = num;
+    conf->msg_id = msgid;
+    conf->task_count = 0;
+    conf->wait_time = 0;
+    conf->removed_count = 0;
+    conf->log_file = open(LOGFILE, O_WRONLY | O_CREAT);
     
     rdwr_lock = &(shm_struct->l);
     rdwr_lock->b = 0;
@@ -102,36 +114,33 @@ int main(int argc, char *argv[])
             int aux = servers[i].vcpus[0].speed;
             servers[i].vcpus[0].speed = servers[i].vcpus[1].speed;
             servers[i].vcpus[1].speed = aux;
+            servers[i].executed_count = 0;
+            servers[i].maintenance_count = 0;
         }
     }
     fclose(f);
     
     sync_log("SHARED MEMORY CREATED", conf->log_file);
 
-    for (i = 0; i < 3; i++)
-    {
-        if (fork() == 0)
-        {
-            switch (i)
-            {
-
-            case 0:
-                taskmanager();
-                exit(0);
-                break;
-
-            case 1:
-                maintenance();
-                exit(0);
-                break;
-
-            default:
-                monitor();
-                exit(0);
-                break;
-            }
-        }
+    if (fork() == 0) {
+        printf("%d\n", getpid());
+        monitor();
+        exit(0);
     }
+    
+    if (fork() == 0) {
+        printf("%d\n", getpid());
+        maintenance();
+        exit(0);
+    }
+    
+    if (fork() == 0) {
+        printf("%d\n", getpid());
+        taskmanager();
+        exit(0);
+    }
+    printf("fucking oi?\n");
+    signal(SIGTSTP, stats);
     for (i = 0; i < 3; i++)
     {
         wait(NULL);
