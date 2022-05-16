@@ -1,17 +1,22 @@
 #include "edge_server.h"
 pthread_mutex_t idle_mutex = PTHREAD_MUTEX_INITIALIZER, maint_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t idle_cv = PTHREAD_COND_INITIALIZER, maint_cv = PTHREAD_COND_INITIALIZER;
-
+int n;
 int idling, curr_level, pipes[2];
 pthread_t threads[3];
 void sigint_edgeServer();
+
 void edgeserver(edgeServer *server, int num, int *p)
 {
-	signal(SIGINT,sigint_edgeServer);
+	sigset_t set;
+    sigfillset(&set);
+    sigdelset(&set, SIGUSR1);
+    sigprocmask(SIG_BLOCK,&set,NULL);
+	signal(SIGUSR1,sigint_edgeServer);
     char string[40];
     snprintf(string, 39, "%s READY", server->name);
     sync_log(string, conf->log_file);
-
+    n = num;
     pipes[0] = p[0];
     pipes[1] = p[1];
     idling = 0;
@@ -35,47 +40,46 @@ void edgeserver(edgeServer *server, int num, int *p)
     
     while (1) {
         msgrcv(msgid, &m, sizeof(msg) - sizeof(long), (long)(num + 1), 0);
-        printf("%d RECEBEU %s\n", num, m.payload); 
+       
         if (strcmp(m.payload, "MAINT") != 0) {
             strcpy(m.payload, "NO");
             msgsnd(msgid, &m, sizeof(msg) - sizeof(long), 0);
             continue;
         }
-	pthread_mutex_lock(&idle_mutex);
+	    pthread_mutex_lock(&idle_mutex);
+	    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
         while (idling != 2) {
-            printf("%d\n", idling);
             pthread_cond_wait(&idle_cv, &idle_mutex);
         }
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         pthread_mutex_unlock(&idle_mutex);
         strcpy(m.payload, "OK");
         
         pthread_mutex_lock(&(tm_shm->mutex));
         
         begin_shm_write();
-	server->performance_lvl = 0;
-	conf->available_cpus -= curr_level;
-	end_shm_write();
+		server->performance_lvl = 0;
+		conf->available_cpus -= curr_level;
+		end_shm_write();
 	
-	pthread_cond_broadcast(&(tm_shm->cv));
-	pthread_mutex_unlock(&(tm_shm->mutex));
+		pthread_cond_broadcast(&(tm_shm->cv));
+		pthread_mutex_unlock(&(tm_shm->mutex));
 	
+		msgsnd(msgid, &m, sizeof(msg) - sizeof(long), 0);
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+		msgrcv(msgid, &m, sizeof(msg) - sizeof(long), (long)(num + 1), 0);
 	
-	printf("sending to MM: %s\n", m.payload);
-	msgsnd(msgid, &m, sizeof(msg) - sizeof(long), 0);
-	msgrcv(msgid, &m, sizeof(msg) - sizeof(long), (long)(num + 1), 0);
-	
-	pthread_mutex_lock(&(tm_shm->mutex));
-	begin_shm_write();
-	server->performance_lvl = curr_level;
-	conf->available_cpus += curr_level;
-	servers[num].maintenance_count++;
-	printf("%d\n", servers[num].maintenance_count);
-	end_shm_write();
-	pthread_cond_broadcast(&(tm_shm->cv));
-	pthread_mutex_unlock(&(tm_shm->mutex));
-	pthread_mutex_lock(&maint_mutex);
-	pthread_cond_signal(&maint_cv);
-	pthread_mutex_unlock(&maint_mutex);
+		pthread_mutex_lock(&(tm_shm->mutex));
+		begin_shm_write();
+		server->performance_lvl = curr_level;
+		conf->available_cpus += curr_level;
+		servers[num].maintenance_count++;
+		end_shm_write();
+		pthread_cond_broadcast(&(tm_shm->cv));
+		pthread_mutex_unlock(&(tm_shm->mutex));
+		pthread_mutex_lock(&maint_mutex);
+		pthread_cond_signal(&maint_cv);
+		pthread_mutex_unlock(&maint_mutex);
     }
         
     for (i = 0; i < 3; i++)
@@ -93,7 +97,9 @@ void *workercpu(void *ptr)
     idling++;
     while (1)
     {
-        sem_wait(&vcpu_sems[numserver * 2 + numcpu]); printf("acordeiiii\n");
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        sem_wait(&vcpu_sems[numserver * 2 + numcpu]);
+        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
         sem_post(&vcpu_sems[numserver * 2 + numcpu]);
        
         pthread_mutex_lock(&idle_mutex);
@@ -112,19 +118,18 @@ void *workercpu(void *ptr)
         if (sscanf(received, "%[^;];%[^;]", id, gosleep) == 2) 
         {
             double sleeptime = strtod(gosleep, NULL);
-            printf("Server %d - VCPU %d: recebi task %s vou dormir: %f\n", numserver, numcpu, id, sleeptime);
+            printf("%s - VCPU %d: recebi task %s vou dormir: %f\n", servers[numserver].name, numcpu, id, sleeptime);
             sleep(sleeptime);
-            printf("Server %d - VCPU %d: done!\n", numserver, numcpu);
+            printf("%s - VCPU %d: done!\n", servers[numserver].name, numcpu);
         }
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         pthread_mutex_lock(&idle_mutex);
         idling++;
         pthread_cond_signal(&idle_cv);
         pthread_mutex_unlock(&idle_mutex);
-        printf("%d\n", idling);
         pthread_mutex_lock(&(tm_shm->mutex));
         begin_shm_write();
         conf->available_cpus++;
-        printf("available_cpus: %d\n", conf->available_cpus);
         end_shm_write();
         pthread_cond_signal(&(tm_shm->cv));
         pthread_mutex_unlock(&(tm_shm->mutex));
@@ -145,24 +150,26 @@ void *workermonitor(void *ptr)
     	end_shm_read();
     	pthread_mutex_lock(flag_mutex);
     	while(flag == curr_flag){
+    	    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
     		pthread_cond_wait(flag_cv,flag_mutex);
+    		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     		begin_shm_read();
     		performance_level = servers[numserver].performance_lvl;
     		flag = conf->flag_servers;
     		end_shm_read();
     	}
     	pthread_mutex_unlock(flag_mutex);
-    	printf("MUDOU ALGUMA MERDA\n");
     	pthread_mutex_lock(&maint_mutex);
     	while (performance_level == 0){
+    	    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
     		pthread_cond_wait(&maint_cv, &maint_mutex);
+    		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     	}
     	pthread_mutex_unlock(&maint_mutex);
     	begin_shm_write();
     	pthread_mutex_lock(&(tm_shm->mutex));
     	servers[numserver].performance_lvl = flag;
     	conf->available_cpus += (flag-curr_flag);
-    	printf("available cpus monitor: %d\n",servers[numserver].performance_lvl);
     	pthread_cond_signal(&(tm_shm->cv));
         pthread_mutex_unlock(&(tm_shm->mutex));
     	end_shm_write();
@@ -170,19 +177,25 @@ void *workermonitor(void *ptr)
 }
 
 void sigint_edgeServer(){
-	printf("ADEUS EDGE SERVER\n");
-/*
+servers[n].performance_lvl =0;
 	pthread_mutex_lock(&idle_mutex);
-	while(idling != 2){
-		pthread_cond_wait(&idle_cv,&idle_mutex);
+	
+	while (idling != 2) {
+		pthread_cond_wait(&idle_cv, &idle_mutex);
+		
+    }
+    pthread_mutex_unlock(&idle_mutex);
+	pthread_cond_broadcast(&maint_cv);
+	pthread_cond_broadcast(&(tm_shm->cv));
+	
+	for(int i = 0; i<3 ; i++){
+		pthread_cancel(threads[i]);
 	}
-	pthread_mutex_unlock(&idle_mutex);
+	idle_cv.__data.__wrefs = 0;
+	maint_cv.__data.__wrefs = 0;
 	pthread_mutex_destroy(&idle_mutex);
 	pthread_cond_destroy(&idle_cv);
 	pthread_mutex_destroy(&maint_mutex);
 	pthread_cond_destroy(&maint_cv);
-	for(int i = 0; i<3 ; i++){
-		pthread_cancel(threads[i]);
-	}
-	*/
+	exit(0);
 }

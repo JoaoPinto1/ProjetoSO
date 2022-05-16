@@ -19,6 +19,8 @@ pthread_mutex_t *monitor_mutex;
 pthread_mutex_t *flag_mutex;
 pthread_cond_t *monitor_cv;
 pthread_cond_t *flag_cv;
+pid_t ids[3];
+void sigint();
 
 int shm_fd, l, msgid, num;
 
@@ -37,7 +39,11 @@ int main(int argc, char *argv[])
     sigfillset(&set);
     sigdelset(&set, SIGINT);
     sigdelset(&set,SIGTSTP);
+    sigdelset(&set,SIGUSR1);
     sigprocmask(SIG_BLOCK,&set,NULL);
+    
+    signal(SIGINT,sigint);
+    
     int queuePos, maxWait, offset = 0, i;
     const char *filename = argv[1];
 
@@ -82,7 +88,6 @@ int main(int argc, char *argv[])
     
     conf->queue_pos = queuePos;
     conf->num_servers = num;
-    printf("%d %d %d\n", conf->max_wait, conf->queue_pos, conf->num_servers);
     conf->flag_servers = 1;
     conf->percent_filled = 0;
     conf->task_count = 0;
@@ -136,23 +141,23 @@ int main(int argc, char *argv[])
     
     sync_log("SHARED MEMORY CREATED", conf->log_file);
 
-    if (fork() == 0) {
+    if ((ids[0] = fork()) == 0) {
     	signal(SIGTSTP, SIG_IGN);
-        printf("%d\n", getpid());
+    	signal(SIGINT, SIG_IGN);
         monitor();
         exit(0);
     }
     
-    if (fork() == 0) {
+    if ((ids[1] = fork()) == 0) {
     	signal(SIGTSTP, SIG_IGN);
-        printf("%d\n", getpid());
+    	signal(SIGINT, SIG_IGN);
         maintenance();
         exit(0);
     }
     
-    if (fork() == 0) {
+    if ((ids[2] = fork()) == 0) {
     	signal(SIGTSTP, SIG_IGN);
-        printf("%d\n", getpid());
+    	signal(SIGINT, SIG_IGN);
         taskmanager();
         exit(0);
     }
@@ -171,13 +176,18 @@ int main(int argc, char *argv[])
 }
 
 void sigint(){
-	printf("ADEUS SYSTEM\n");
-/*
 	sync_log("SIGNAL SIGINT RECIEVED", conf->log_file);
+	for (int i = 0; i < 3; i++)
+    {
+        kill(ids[i], SIGUSR1);
+    }
+    
 	for (int i = 0; i < 3; i++)
     {
         wait(NULL);
     }
+    
+    stats();
 	monitor_cv->__data.__wrefs = 0;
 	flag_cv->__data.__wrefs = 0;
     pthread_mutex_destroy(&(rdwr_lock->read_mutex));
@@ -192,5 +202,5 @@ void sigint(){
 	sync_log("SIMULATOR CLOSING", conf->log_file);
 	close(conf->log_file);
 	pthread_mutex_destroy(&(conf->log_mutex));
-	*/
+	exit(0);
 }

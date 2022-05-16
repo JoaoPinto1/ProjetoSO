@@ -1,6 +1,6 @@
 CC	= gcc
 OBJS	= shm.o log.o monitor.o task_manager.o system_manager.o maintenance_manager.o edge_server.o
-PROG	= offload_manager
+PROG	= offload_simulator
 CFLAGS	= -Wall -pthread -lrt -g
 all:	$(PROG) mobile_node
 

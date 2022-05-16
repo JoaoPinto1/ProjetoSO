@@ -1,9 +1,8 @@
 #include "task_manager.h"
 pthread_mutex_t operation_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t *vcpu_mutex;
 
 pthread_cond_t operation_cv = PTHREAD_COND_INITIALIZER;
-pthread_cond_t *vcpu_cv;
+
 char logstring[128];
 sem_t *vcpu_sems;
 int **pipes, pos, v;
@@ -11,6 +10,7 @@ int task_fd;
 taskmanager_shm *tm_shm;
 int num_servers, queue_pos;
 bool waiting;
+pid_t *ids;
 pthread_t threads[2];
 int fd;
 
@@ -18,11 +18,10 @@ void int_timespec_subtraction(int sec, struct timespec t1, struct timespec *t2);
 void taskmanager()
 {
     sync_log("PROCESS TASK MANAGER CREATED", conf->log_file);
-	signal(SIGINT,sigint_task);
+	signal(SIGUSR1,sigint_task);
     begin_shm_read();
     num_servers = conf->num_servers;
     queue_pos = conf->queue_pos;
-    printf("%d\n", num_servers);
     end_shm_read();
 
     taskQueue = (queuedTask *)malloc(queue_pos * sizeof(queuedTask));
@@ -58,20 +57,17 @@ void taskmanager()
         pipe(pipes[i]);
     }
 
-    for (int i = 0; i < num_servers; i++)
-    {
-        printf("%d %d\n", pipes[i][0], pipes[i][1]);
-    }
     fd = open("TASK_PIPE", O_RDWR);
     if (fd == -1)
     {
         sync_log("ERROR OPENING TASK_PIPE", conf->log_file);
         exit(0);
     }
-
+	
+	ids = (pid_t *) malloc(num_servers * sizeof(pid_t));
     for (int i = 0; i < num_servers; i++)
     {
-        if (fork() == 0)
+        if ((ids[i] = fork()) == 0)
         {
             edgeserver(&servers[i], i, pipes[i]);
             exit(0);
@@ -101,12 +97,12 @@ void taskmanager()
         }
         buffer[len] = '\0';
         strcat(string, buffer);
-		printf("%s\n",string);
         if (strcmp(string, "EXIT") == 0)
         {
         	read(fd, buffer, 1);
             sync_log("EXIT", conf->log_file);
-            break;
+            kill(getppid(),SIGINT);
+            
         }
         if ((len = read(fd, buffer, 1)) == -1)
         {
@@ -115,7 +111,6 @@ void taskmanager()
         }
         buffer[len] = '\0';
         strcat(string, buffer);
-        printf("%s\n",string);
         if (strcmp(string, "STATS") == 0)
         {
         	read(fd, buffer, 1);
@@ -131,16 +126,15 @@ void taskmanager()
 
         buffer[len] = '\0';
         strcat(string, buffer);
-        printf("%s\n",string);
         if (sscanf(string, "%[^;];%d;%d", tid, &mi, &timeLimit) == 3)
         {
-            printf("inserter locking operation\n");
             pthread_mutex_lock(&operation_mutex);
 
             while (op != insert)
             {
-                printf("inserter waiting\n");
+            	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
                 pthread_cond_wait(&operation_cv, &operation_mutex);
+                pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
             }
             if (pos == queue_pos){
             	sync_log("TASK REMOVED DUE TO LACK OF SPACE IN QUEUE",conf->log_file);
@@ -164,10 +158,8 @@ void taskmanager()
             snprintf(logstring, LOGLEN, "TASK INSERIDA NA FILA: %s«\n", taskQueue[pos].t.id);
             sync_log(logstring, conf->log_file);
             pos++;
-            printf("pos: %d\n", pos);
             op = schedule;
             pthread_cond_broadcast(&operation_cv);
-            printf("inserter unlocking operation\n");
             pthread_mutex_unlock(&operation_mutex);
             continue;
         }
@@ -184,12 +176,12 @@ void *scheduler()
 { // tempo de chegada + tempo maximo - tempo atual
     while (1)
     {
-        printf("scheduler locking operation\n");
         pthread_mutex_lock(&operation_mutex);
         while (op != schedule)
         {
-            printf("scheduler waiting for operation_cv\n");
+        	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
             pthread_cond_wait(&operation_cv, &operation_mutex);
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         }
         struct timespec current_time, elapsed_time_i, remaining_time_i,
             elapsed_time_j, remaining_time_j;
@@ -238,8 +230,6 @@ void *scheduler()
                 }
             }
         }
-        snprintf(logstring, LOGLEN, "prioridades ajustadas!");
-        sync_log(logstring, conf->log_file);
 
         if (waiting)
         {
@@ -249,9 +239,7 @@ void *scheduler()
         {
             op = dispatch;
         }
-        printf("scheduler broadcasting operation_cv\n");
         pthread_cond_broadcast(&operation_cv);
-        printf("scheduler unlocking operation\n");
         pthread_mutex_unlock(&operation_mutex);
     }
     pthread_exit(NULL);
@@ -262,13 +250,13 @@ void *dispatcher()
 {
     while (1)
     {
-        printf("dispatcher locking operation\n");
         pthread_mutex_lock(&operation_mutex);
 
         while (op != dispatch)
         {
-
+            pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
             pthread_cond_wait(&operation_cv, &operation_mutex);
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         }
 
         if (pos == 0)
@@ -284,29 +272,30 @@ void *dispatcher()
         int num_servers = conf->num_servers;
 
         int available_cpus = conf->available_cpus;
-        printf("available_cpus before loop: %d\n", available_cpus);
         end_shm_read();
 
         while (available_cpus == 0)
         {
             waiting = true;
             op = insert;
-            printf("ULTRA SPECIAL CONDITION\n");
             pthread_cond_broadcast(&operation_cv);
             pthread_mutex_unlock(&operation_mutex);
+            pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
             pthread_cond_wait(&(tm_shm->cv), &(tm_shm->mutex));
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
             begin_shm_read();
             available_cpus = conf->available_cpus;
             end_shm_read();
         }
         if (waiting)
         {
-            printf("trying to get the lock\n");
             pthread_mutex_lock(&operation_mutex);
 
             while (op == schedule)
             {
+                pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
                 pthread_cond_wait(&operation_cv, &operation_mutex);
+                pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
             }
 
             op = dispatch;
@@ -322,7 +311,6 @@ void *dispatcher()
             if (taskQueue[j].priority < taskQueue[i].priority)
                 i = j;
         }
-        printf("menor prioridade: %s\n", taskQueue[i].t.id);
         queuedTask task = taskQueue[i];
         int aux_tempo = 0, aux_vcpu = 0, value;
         struct timespec current_time, elapsed_time, remaining_time, execution_time;
@@ -370,6 +358,7 @@ void *dispatcher()
                         end_shm_write();
                         sync_log(logstring, conf->log_file);
                         sem_post(&vcpu_sems[j * 2 + k]);
+                        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
                         removeTask(i);
                         break;
                     }
@@ -387,39 +376,48 @@ void *dispatcher()
             conf->removed_count++;
         }
         pthread_mutex_unlock(&operation_mutex);
-        printf("dispatcher unlocking operation\n");
     }
     pthread_exit(NULL);
     return NULL;
 }
 
 void sigint_task(){
-	printf("ADEUS TASK\n");
-/*
+    signal(SIGINT, SIG_IGN);
 	sync_log("SIMULATOR WAITING FOR LAST TASKS TO FINISH",conf->log_file);
+	tm_shm->cv.__data.__wrefs = 0;
 	operation_cv.__data.__wrefs = 0;
-	pthread_mutex_destroy(&operation_mutex);
-	pthread_cond_destroy(&operation_cv);
-	for (int i = 0;i < num_servers*2; i++){
+	pthread_cancel(threads[0]);
+	pthread_cancel(threads[1]);
+	
+	for (int i = 0; i < num_servers; i++) {
+		kill(ids[i], SIGUSR1);
+    }
+    for (int i = 0; i < num_servers; i++) {
+		wait(NULL);
+    }
+    
+    for (int i = 0;i < num_servers*2; i++){
 		sem_destroy(&(vcpu_sems[i]));
 	}
 	tm_shm->cv.__data.__wrefs = 0;
-	pthread_mutex_destroy(&(tm_shm->mutex));
+	operation_cv.__data.__wrefs = 0;
+	pthread_mutex_destroy(&operation_mutex);
+	pthread_cond_destroy(&operation_cv);
 	pthread_cond_destroy(&(tm_shm->cv));
-	pthread_cancel(threads[0]);
-	pthread_cancel(threads[1]);
+	for(int i = 0; i < pos; i++){
+		snprintf(logstring,LOGLEN,"TASK %s WAS NOT EXECUTED",taskQueue[i].t.id);
+		sync_log(logstring,conf->log_file);
+	}
 	close(fd);
 	munmap(0,sizeof(taskmanager_shm) + num_servers * 2 * sizeof(sem_t));
 	shm_unlink(TASK_SHMNAME);
 	exit(0);
-	*/
 }
 
 void removeTask(int a)
 {
     taskQueue[a] = taskQueue[pos - 1];
     pos--;
-    printf("%d\n", pos);
     pthread_mutex_lock(monitor_mutex);
     begin_shm_write();
     conf->percent_filled -= (float)1/(float)queue_pos;

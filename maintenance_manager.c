@@ -1,7 +1,10 @@
 #include "maintenance_manager.h"
 
+void sigint_maintenance();
+char logprint[128];
 void maintenance()
 {
+	signal(SIGUSR1,sigint_maintenance);
     srand(getpid());
     
     sync_log("PROCESS MAINTENANCE MANAGER CREATED", conf->log_file);
@@ -11,28 +14,35 @@ void maintenance()
     msg m;
     while (1) 
     {
-        printf("snoozin'\n");
         sleep(((float)rand()/(float)RAND_MAX) * 4 + 1);
         
-        printf("woke up\n");
         float sleeptime = ((float)rand()/(float)RAND_MAX) * 4 + 1;
         strcpy(m.payload, "MAINT");
         long serv = rand() % n + 1;
     	m.msgtype = serv;
-    	printf("sending message to %ld\n", serv - 1);
         msgsnd(id, &m, sizeof(msg) - sizeof(long), 0);
         msgrcv(id, &m, sizeof(msg) - sizeof(long), serv, 0);
         if (strcmp(m.payload, "OK") != 0) 
         {
-            printf("SERVER %ld NOT READY FOR MAINTENANCE\n", serv - 1);
+            snprintf(logprint,LOGLEN,"SERVER %ld NOT READY FOR MAINTENANCE", serv - 1);
+            sync_log(logprint,conf->log_file);
         }
         
         else 
         {
-            printf("Maintenance for server %ld! schleepin'\n", serv - 1);
+            snprintf(logprint,LOGLEN,"Maintenance for server %ld!", serv - 1);
+            sync_log(logprint,conf->log_file);
             sleep(sleeptime);
             strcpy(m.payload, "READY");
             msgsnd(id, &m, sizeof(msg) - sizeof(long), 0);
         }
    }
+}
+
+void sigint_maintenance(){
+	if (msgctl(conf->msg_id, IPC_RMID, NULL) == -1) {
+		fprintf(stderr, "Message queue could not be deleted.\n");
+		exit(EXIT_FAILURE);
+	}
+	exit(0);
 }

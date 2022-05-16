@@ -25,12 +25,15 @@ void end_shm_write() {
 
 void stats() {
     begin_shm_read();
-    printf("STATS:\n\n");
-    printf("Nº de tarefas executadas: %d\n", conf->task_count);
-    printf("Tempo médio de resposta: %f\n", conf->wait_time/(float)conf->task_count);
+    printf("\nSTATS:\n");
+    printf("Number of tasks executed: %d\n", conf->task_count);
+    if(conf->task_count == 0)
+    	printf("Average time of execution: 0\n");
+    else
+    	printf("Average time of execution: %f\n", conf->wait_time/(float)conf->task_count);
     for (int i = 0; i < conf->num_servers; i++) {
-        printf(">SERVER %s: %d tarefas executadas, %d operações de manutenção\n", servers[i].name, servers[i].executed_count, servers[i].maintenance_count);
+        printf(">%s: %d executed tasks, %d maintenence operations\n", servers[i].name, servers[i].executed_count, servers[i].maintenance_count);
     }
-    printf("Nº de tarefas removidas: %d\n", conf->removed_count);
+    printf("Number of tasks removed: %d\n", conf->removed_count);
     end_shm_read();
 }

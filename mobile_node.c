@@ -26,7 +26,7 @@ int main(int argc, char* argv[]){
     long instrucoes = strtol(argv[3],NULL,10);
     long tempomax = strtol(argv[4], NULL, 10);
 
-    int fd = open("TASK_PIPE", O_WRONLY);printf("trying\n");
+    int fd = open("TASK_PIPE", O_WRONLY);
     if(fd == -1){
         printf("Named Pipe não encontrado\n");
         return 1;
@@ -41,7 +41,6 @@ int main(int argc, char* argv[]){
             printf("Erro escrever no named pipe\n");
             return 1;
         }	
-        printf("enviado: %s\n", string);
         sleep(intervalo*0.001);
         string[0] = '\0';
     }

@@ -1,5 +1,6 @@
 #ifndef TASK_SHM_H
 #define TASK_SHM_H
+#define TASK_SHMNAME "TASKSHM"
 #include <pthread.h>
 #include <semaphore.h>
 

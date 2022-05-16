@@ -5,14 +5,13 @@ void monitor()
 {
 
 	sync_log("PROCESS MONITOR CREATED", conf->log_file);
-	signal(SIGINT,sigint_monitor);
+	signal(SIGUSR1,sigint_monitor);
 	while (1)
 	{
 		pthread_mutex_lock(monitor_mutex);
 		while (conf->percent_filled < 0.8)
 		{
 			pthread_cond_wait(monitor_cv, monitor_mutex);
-			printf("percent filled: %f\n",conf->percent_filled);
 		}
 		conf->flag_servers = 2;
 		pthread_mutex_lock(flag_mutex);
@@ -33,8 +32,5 @@ void monitor()
 }
 
 void sigint_monitor(){
-	printf("ADEUS MONITOR\n");
-/*
 	exit(0);
-*/
 }
